@@ -973,9 +973,9 @@ gst_omx_video_enc_loop (GstOMXVideoEnc * self)
       GST_DEBUG_OBJECT (self, "%d frames left to process before EOS.", len);
 
       /* push buffer back */
-      gst_omx_rec_mutex_lock (&self->out_port->port_lock);
-      g_queue_push_tail (self->out_port->pending_buffers, NULL);
-      gst_omx_rec_mutex_unlock (&self->out_port->port_lock);
+      g_mutex_lock (self->component->lock);
+      g_queue_push_tail (&self->out_port->pending_buffers, NULL);
+      g_mutex_unlock (self->component->lock);
     } else {
       flow_ret = GST_FLOW_UNEXPECTED;
     }
@@ -1606,11 +1606,13 @@ gst_omx_video_enc_finish (GstBaseVideoEncoder * encoder)
   if ((klass->hacks & GST_OMX_HACK_NO_EMPTY_EOS_BUFFER)) {
     GST_WARNING_OBJECT (self, "Component does not support empty EOS buffers");
 
-    /* Insert a NULL into the queue to signal EOS */
-    gst_omx_rec_mutex_lock (&self->out_port->port_lock);
-    g_queue_push_tail (self->out_port->pending_buffers, NULL);
-    g_cond_broadcast (self->out_port->port_cond);
-    gst_omx_rec_mutex_unlock (&self->out_port->port_lock);
+    /* Insert a NULL into the queue to signal EOS */   
+    g_mutex_lock (self->component->lock);
+    g_queue_push_tail (&self->out_port->pending_buffers, NULL);
+    g_mutex_lock (self->component->messages_lock);
+    g_cond_broadcast (self->component->messages_cond);
+    g_mutex_unlock (self->component->messages_lock);
+    g_mutex_unlock (self->component->lock);
 
     return GST_BASE_VIDEO_ENCODER_FLOW_DROPPED;
   }
