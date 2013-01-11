@@ -751,6 +751,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
     return;
   }
 
+
+  GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
   if (!GST_PAD_CAPS (GST_BASE_VIDEO_CODEC_SRC_PAD (self))
       || acq_return == GST_OMX_ACQUIRE_BUFFER_RECONFIGURED) {
     GstVideoState *state = &GST_BASE_VIDEO_CODEC (self)->state;
@@ -758,7 +760,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
 
     GST_DEBUG_OBJECT (self, "Port settings have changed, updating caps");
 
-    GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
     gst_omx_port_get_port_definition (port, &port_def);
     g_assert (port_def.format.video.eCompressionFormat ==
         OMX_VIDEO_CodingUnused);
@@ -793,33 +794,33 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
     if (!gst_omc_video_dec_set_src_caps (self)) {
       if (buf)
         gst_omx_port_release_buffer (self->out_port, buf);
-      GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
       goto caps_failed;
     }
 
-    GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
-
     /* Now get a buffer */
-    if (acq_return != GST_OMX_ACQUIRE_BUFFER_OK)
+    if (acq_return != GST_OMX_ACQUIRE_BUFFER_OK) {
+      GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
       return;
+    }
   }
+  GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
 
   g_assert (acq_return == GST_OMX_ACQUIRE_BUFFER_OK);
+
+  /* This prevents a deadlock between the srcpad stream
+   * lock and the videocodec stream lock, if ::reset()
+   * is called at the wrong time
+   */
+  if (gst_omx_port_is_flushing (self->out_port)) {
+    GST_DEBUG_OBJECT (self, "Flushing");
+    gst_omx_port_release_buffer (self->out_port, buf);
+    goto flushing;
+  }
 
   if (buf) {
     GST_DEBUG_OBJECT (self, "Handling buffer: %p (%p) flags: 0x%08x ts: %lu",
         buf, buf->omx_buf->pBuffer, buf->omx_buf->nFlags,
         buf->omx_buf->nTimeStamp);
-
-    /* This prevents a deadlock between the srcpad stream
-     * lock and the videocodec stream lock, if ::reset()
-     * is called at the wrong time
-     */
-    if (gst_omx_port_is_flushing (self->out_port)) {
-      GST_DEBUG_OBJECT (self, "Flushing");
-      gst_omx_port_release_buffer (self->out_port, buf);
-      goto flushing;
-    }
 
     GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
     frame = _find_nearest_frame (self, buf);
@@ -835,6 +836,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       flow_ret =
           gst_base_video_decoder_drop_frame (GST_BASE_VIDEO_DECODER (self),
           frame);
+      frame = NULL;
     } else if (!frame && buf->omx_buf->nFilledLen > 0) {
       GstBuffer *outbuf;
 
@@ -891,26 +893,24 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           }
 
           flow_ret =
-              gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER
-              (self), frame);
+              gst_base_video_decoder_drop_frame (GST_BASE_VIDEO_DECODER (self), frame);
+          frame = NULL;
 
           if (!(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
             /* Only for non-native buffers */
             gst_omx_port_release_buffer (self->out_port, buf);
           }
-
           goto invalid_buffer;
         }
+        GST_BUFFER_FLAG_SET (frame->src_buffer, GST_BUFFER_FLAG_PUSHED);
+        flow_ret =
+            gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self), frame);
+        frame = NULL;
       }
-
-      GST_BUFFER_FLAG_SET (frame->src_buffer, GST_BUFFER_FLAG_PUSHED);
-      flow_ret =
-          gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self),
-          frame);
     } else if (frame != NULL) {
       flow_ret =
-          gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self),
-          frame);
+          gst_base_video_decoder_drop_frame (GST_BASE_VIDEO_DECODER (self), frame);
+      frame = NULL;
     }
 
     if (is_eos || flow_ret == GST_FLOW_UNEXPECTED) {
@@ -1026,6 +1026,7 @@ caps_failed:
     gst_pad_push_event (GST_BASE_VIDEO_CODEC_SRC_PAD (self),
         gst_event_new_eos ());
     gst_pad_pause_task (GST_BASE_VIDEO_CODEC_SRC_PAD (self));
+    GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
     self->downstream_flow_ret = GST_FLOW_NOT_NEGOTIATED;
     self->started = FALSE;
     return;
@@ -1422,9 +1423,6 @@ gst_omx_video_dec_handle_frame (GstBaseVideoDecoder * decoder,
   duration = frame->presentation_duration;
 
   if (self->downstream_flow_ret != GST_FLOW_OK) {
-    GST_ERROR_OBJECT (self, "Downstream returned %s",
-        gst_flow_get_name (self->downstream_flow_ret));
-
     return self->downstream_flow_ret;
   }
 
@@ -1445,21 +1443,28 @@ gst_omx_video_dec_handle_frame (GstBaseVideoDecoder * decoder,
      * because no input buffers are released */
     GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
     acq_ret = gst_omx_port_acquire_buffer (self->in_port, &buf);
-    GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
 
     if (acq_ret == GST_OMX_ACQUIRE_BUFFER_ERROR) {
+      GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
       goto component_error;
     } else if (acq_ret == GST_OMX_ACQUIRE_BUFFER_FLUSHING) {
+      GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
       goto flushing;
     } else if (acq_ret == GST_OMX_ACQUIRE_BUFFER_RECONFIGURE) {
-      if (gst_omx_port_reconfigure (self->in_port) != OMX_ErrorNone)
+      if (gst_omx_port_reconfigure (self->in_port) != OMX_ErrorNone) {
+        GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
         goto reconfigure_error;
+      }
+
       /* Now get a new buffer and fill it */
+      GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
       continue;
     } else if (acq_ret == GST_OMX_ACQUIRE_BUFFER_RECONFIGURED) {
       /* TODO: Anything to do here? Don't think so */
+      GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
       continue;
     }
+    GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
 
     g_assert (acq_ret == GST_OMX_ACQUIRE_BUFFER_OK && buf != NULL);
 
@@ -1469,11 +1474,8 @@ gst_omx_video_dec_handle_frame (GstBaseVideoDecoder * decoder,
     }
 
     if (self->downstream_flow_ret != GST_FLOW_OK) {
-      GST_ERROR_OBJECT (self, "Downstream returned %s",
-          gst_flow_get_name (self->downstream_flow_ret));
-
       gst_omx_port_release_buffer (self->in_port, buf);
-      return self->downstream_flow_ret;
+      goto flow_error;
     }
 
     if (self->codec_data) {
@@ -1559,6 +1561,8 @@ gst_omx_video_dec_handle_frame (GstBaseVideoDecoder * decoder,
     gst_omx_port_release_buffer (self->in_port, buf);
   }
 
+  GST_DEBUG_OBJECT (self, "Passed frame to component");
+
   return self->downstream_flow_ret;
 
 full_buffer:
@@ -1567,6 +1571,11 @@ full_buffer:
         ("Got OpenMAX buffer with no free space (%p, %u/%u)", buf,
             buf->omx_buf->nOffset, buf->omx_buf->nAllocLen));
     return GST_FLOW_ERROR;
+  }
+
+flow_error:
+  {
+    return self->downstream_flow_ret;
   }
 
 too_large_codec_data:
