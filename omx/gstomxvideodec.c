@@ -675,6 +675,9 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       case OMX_COLOR_FormatYUV420SemiPlanar:
         state->format = GST_VIDEO_FORMAT_NV12;
         break;
+      case OMX_COLOR_FormatYUV420MBPackedSemiPlanar:
+        state->format = GST_VIDEO_FORMAT_YUMB;
+        break;
       default:
         GST_ERROR_OBJECT (self, "Unsupported color format: %d",
             port_def.format.video.eColorFormat);
@@ -1052,6 +1055,9 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
       break;
     case GST_VIDEO_FORMAT_NV12:
       param.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
+      break;
+    case GST_VIDEO_FORMAT_YUMB:
+      param.eColorFormat = OMX_COLOR_FormatYUV420MBPackedSemiPlanar;
       break;
     default:
       GST_ERROR_OBJECT (self, "Unknown color format: %u", format);
