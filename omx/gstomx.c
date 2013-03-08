@@ -1045,6 +1045,7 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
 
   gst_omx_rec_mutex_lock (&port->port_lock);
 
+#if 0
   if (port->port_def.eDir == OMX_DirInput) {
     /* Reset all flags, some implementations don't
      * reset them themselves and the flags are not
@@ -1052,6 +1053,7 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
      */
     buf->omx_buf->nFlags = 0;
   }
+#endif
 
   if ((err = gst_omx_component_get_last_error (comp)) != OMX_ErrorNone) {
     GST_ERROR_OBJECT (comp->parent, "Component is in error state: %s (0x%08x)",
