@@ -509,6 +509,9 @@ gst_omx_video_dec_fill_buffer (GstOMXVideoDec * self, GstOMXBuffer * inbuf,
   }
   /* Different strides */
 
+  GST_LOG_OBJECT (self, "Decoder filled %d bytes while we need %d",
+      inbuf->omx_buf->nFilledLen, GST_BUFFER_SIZE (outbuf));
+
   switch (state->format) {
     case GST_VIDEO_FORMAT_I420:{
       gint i, j, height;
