@@ -679,6 +679,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         state->format = GST_VIDEO_FORMAT_NV12;
         break;
       case OMX_COLOR_FormatYUV420MBPackedSemiPlanar:
+      case OMX_SYMBIAN_COLOR_FormatYUV420MBPackedSemiPlanar:
         state->format = GST_VIDEO_FORMAT_YUMB;
         break;
       default:
@@ -1023,6 +1024,7 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
                       '2'), NULL));
           break;
         case OMX_COLOR_FormatYUV420MBPackedSemiPlanar:
+        case OMX_SYMBIAN_COLOR_FormatYUV420MBPackedSemiPlanar:
           gst_caps_append_structure (comp_supported_caps,
               gst_structure_new ("video/x-raw-yuv",
                   "format", GST_TYPE_FOURCC, GST_MAKE_FOURCC ('Y', 'U', 'M',
