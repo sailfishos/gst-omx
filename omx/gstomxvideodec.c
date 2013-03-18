@@ -1420,10 +1420,16 @@ gst_omx_video_dec_handle_frame (GstBaseVideoDecoder * decoder,
     /* TODO: Set flags
      *   - OMX_BUFFERFLAG_DECODEONLY for buffers that are outside
      *     the segment
-     *   - OMX_BUFFERFLAG_ENDOFFRAME for parsed input
      */
 
     offset += buf->omx_buf->nFilledLen;
+
+    if (offset == GST_BUFFER_SIZE (frame->sink_buffer))
+      buf->omx_buf->nFlags |= OMX_BUFFERFLAG_ENDOFFRAME;
+
+    GST_DEBUG_OBJECT (self, "Releasing back input buffer with flags 0x%x",
+        buf->omx_buf->nFlags);
+
     self->started = TRUE;
     gst_omx_port_release_buffer (self->in_port, buf);
   }
