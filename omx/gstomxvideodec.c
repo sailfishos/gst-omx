@@ -980,12 +980,18 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
   templ_caps =
       gst_pad_get_pad_template_caps (GST_BASE_VIDEO_CODEC_SRC_PAD (self));
   peer_caps = gst_pad_peer_get_caps (GST_BASE_VIDEO_CODEC_SRC_PAD (self));
+
+  GST_DEBUG_OBJECT (self, "our caps %" GST_PTR_FORMAT, templ_caps);
+  GST_DEBUG_OBJECT (self, "peer caps %" GST_PTR_FORMAT, peer_caps);
+
   if (peer_caps) {
     intersection = gst_caps_intersect (templ_caps, peer_caps);
     gst_caps_unref (peer_caps);
   } else {
     intersection = gst_caps_copy (templ_caps);
   }
+
+  GST_DEBUG_OBJECT (self, "intersection %" GST_PTR_FORMAT, intersection);
 
   GST_OMX_INIT_STRUCT (&param);
   param.nPortIndex = port->index;
