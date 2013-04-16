@@ -77,6 +77,10 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_NO_COMPONENT_ROLE                                G_GUINT64_CONSTANT (0x0000000000000080)
 
+/* If the OpenMAX core should be loaded via libhybris or not
+ */
+#define GST_OMX_HACK_HYBRIS                                           G_GUINT64_CONSTANT (0x0000000000000100)
+
 
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
@@ -101,6 +105,10 @@ typedef enum {
 struct _GstOMXCore {
   /* Handle to the OpenMAX IL core shared library */
   GModule *module;
+
+#ifdef HAVE_HYBRIS
+  void *hybris_module;
+#endif
 
   /* Current number of users, transitions from/to 0
    * call init/deinit */
@@ -204,6 +212,10 @@ const gchar *     gst_omx_error_to_string (OMX_ERRORTYPE err);
 guint64           gst_omx_parse_hacks (gchar ** hacks);
 
 GstOMXCore *      gst_omx_core_acquire (const gchar * filename);
+#ifdef HAVE_HYBRIS
+GstOMXCore *      gst_omx_core_acquire_hybris (const gchar * filename);
+#endif
+
 void              gst_omx_core_release (GstOMXCore * core);
 
 

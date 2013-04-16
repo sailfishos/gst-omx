@@ -36,6 +36,10 @@
 #include "gstomxaacenc.h"
 #include "gstomxmpeg2videodec.h"
 #include "gstomxvc1videodec.h"
+#ifdef HAVE_HYBRIS
+#include "hybris.h"
+#include <dlfcn.h>
+#endif
 
 GST_DEBUG_CATEGORY (gstomx_debug);
 #define GST_CAT_DEFAULT gstomx_debug
@@ -110,6 +114,88 @@ symbol_error:
         g_module_error ());
     g_module_close (core->module);
     core->module = NULL;
+    goto error;
+  }
+error:
+  {
+    g_hash_table_remove (core_handles, filename);
+    g_mutex_free (core->lock);
+    g_slice_free (GstOMXCore, core);
+
+    G_UNLOCK (core_handles);
+
+    return NULL;
+  }
+}
+
+GstOMXCore *
+gst_omx_core_acquire_hybris (const gchar * filename)
+{
+  GstOMXCore *core;
+
+  G_LOCK (core_handles);
+  if (!core_handles)
+    core_handles =
+        g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+
+  core = g_hash_table_lookup (core_handles, filename);
+  if (!core) {
+    core = g_slice_new0 (GstOMXCore);
+    core->lock = g_mutex_new ();
+    core->user_count = 0;
+    g_hash_table_insert (core_handles, g_strdup (filename), core);
+    core->module = NULL;
+    core->hybris_module = android_dlopen (filename, RTLD_LAZY);
+    if (!core->hybris_module)
+      goto load_failed;
+
+    core->init = android_dlsym (core->hybris_module, "OMX_Init");
+    if (!core->init)
+      goto symbol_error;
+    core->deinit = android_dlsym (core->hybris_module, "OMX_Deinit");
+    if (!core->deinit)
+      goto symbol_error;
+    core->get_handle = android_dlsym (core->hybris_module, "OMX_GetHandle");
+    if (!core->get_handle)
+      goto symbol_error;
+    core->free_handle = android_dlsym (core->hybris_module, "OMX_FreeHandle");
+    if (!core->free_handle)
+      goto symbol_error;
+
+    GST_DEBUG ("Successfully loaded core '%s'", filename);
+  }
+
+  g_mutex_lock (core->lock);
+  core->user_count++;
+  if (core->user_count == 1) {
+    OMX_ERRORTYPE err;
+
+    err = core->init ();
+    if (err != OMX_ErrorNone) {
+      GST_ERROR ("Failed to initialize core '%s': 0x%08x", filename, err);
+      g_mutex_unlock (core->lock);
+      goto error;
+    }
+
+    GST_DEBUG ("Successfully initialized core '%s'", filename);
+  }
+
+  g_mutex_unlock (core->lock);
+  G_UNLOCK (core_handles);
+
+  return core;
+
+load_failed:
+  {
+    GST_ERROR ("Failed to load module '%s'", filename);
+    goto error;
+  }
+symbol_error:
+  {
+    GST_ERROR ("Failed to locate required OpenMAX symbol in '%s'", filename);
+    android_dlclose (core->hybris_module);
+    core->module = NULL;
+    core->hybris_module = NULL;
     goto error;
   }
 error:
@@ -402,7 +488,17 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
   GstOMXCore *core;
   GstOMXComponent *comp;
 
-  core = gst_omx_core_acquire (core_name);
+  if (hacks & GST_OMX_HACK_HYBRIS) {
+#ifndef HAVE_HYBRIS
+    GST_ERROR_OBJECT (parent,
+        "hybris hack enabled but hybris support has not been compiled in");
+    return NULL;
+#else
+    core = gst_omx_core_acquire_hybris (core_name);
+#endif /* HAVE_HYBRIS */
+  } else
+    core = gst_omx_core_acquire (core_name);
+
   if (!core)
     return NULL;
 
@@ -1989,6 +2085,8 @@ gst_omx_parse_hacks (gchar ** hacks)
       hacks_flags |= GST_OMX_HACK_DRAIN_MAY_NOT_RETURN;
     else if (g_str_equal (*hacks, "no-component-role"))
       hacks_flags |= GST_OMX_HACK_NO_COMPONENT_ROLE;
+    else if (g_str_equal (*hacks, "hybris"))
+      hacks_flags |= GST_OMX_HACK_HYBRIS;
     else
       GST_WARNING ("Unknown hack: %s", *hacks);
     hacks++;

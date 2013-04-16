@@ -173,6 +173,12 @@ AC_ARG_ENABLE(Bsymbolic,
                            enable_Bsymbolic=no)
                LDFLAGS="${SAVED_LDFLAGS}"])
 
+dnl hybris
+AC_ARG_ENABLE(hybris, [AC_HELP_STRING([--enable-hybris], [enable libhybris support for loading Android OpenMax IL libraries])], [
+AC_CHECK_LIB(hybris-common, android_dlopen, [], AC_MSG_ERROR([libhybris-common.so not found]))
+AC_DEFINE(HAVE_HYBRIS, [], [hybris support])
+])
+
 dnl *** set variables based on configure arguments ***
 
 dnl set license and copyright notice
