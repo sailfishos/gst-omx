@@ -9,6 +9,7 @@ Source0:        gstreamer0.10-omx-%{version}.tar.gz
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
 BuildRequires:  libhybris-devel
+Requires:       android-system-leo
 
 %description
 GStreamer OpenMAX IL wrappers
