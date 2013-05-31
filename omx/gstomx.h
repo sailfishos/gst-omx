@@ -78,6 +78,7 @@ G_BEGIN_DECLS
 #define GST_OMX_HACK_NO_COMPONENT_ROLE                                G_GUINT64_CONSTANT (0x0000000000000080)
 
 /* If the OpenMAX core should be loaded via libhybris or not
+ * This is used to load Android binaries
  */
 #define GST_OMX_HACK_HYBRIS                                           G_GUINT64_CONSTANT (0x0000000000000100)
 
