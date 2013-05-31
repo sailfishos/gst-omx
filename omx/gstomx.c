@@ -2087,6 +2087,8 @@ gst_omx_parse_hacks (gchar ** hacks)
       hacks_flags |= GST_OMX_HACK_NO_COMPONENT_ROLE;
     else if (g_str_equal (*hacks, "hybris"))
       hacks_flags |= GST_OMX_HACK_HYBRIS;
+    else if (g_str_equal (*hacks, "android-native-buffers"))
+      hacks_flags |= GST_OMX_HACK_ANDROID_BUFFERS;
     else
       GST_WARNING ("Unknown hack: %s", *hacks);
     hacks++;
