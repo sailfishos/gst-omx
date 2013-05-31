@@ -40,7 +40,8 @@ noinst_HEADERS = \
 	gstbasevideoencoder.h \
 	gstbasevideoutils.h \
 	gstomxrecmutex.h \
-	gstomxvc1videodec.h
+	gstomxvc1videodec.h \
+	hybris.h
 
 fixbaseclasses = \
         -DGstBaseVideoCodec=OMXBaseVideoCodec \
