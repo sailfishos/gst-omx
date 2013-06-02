@@ -18,13 +18,8 @@
 
 #define HARDWARE_API_H_
 
-#include <OMXPluginBase.h>
 #include <system/window.h>
-#include <utils/RefBase.h>
-
 #include <OMX_Component.h>
-
-namespace android {
 
 // A pointer to this struct is passed to the OMX_SetParameter when the extension
 // index for the 'OMX.google.android.index.enableAndroidNativeBuffers' extension
@@ -78,6 +73,7 @@ struct StoreMetaDataInBuffersParams {
 // given.  This call will only be performed if a prior call was made with the
 // 'OMX.google.android.index.enableAndroidNativeBuffers' extension index,
 // enabling use of Android native buffers.
+#if 0
 struct UseAndroidNativeBufferParams {
     OMX_U32 nSize;
     OMX_VERSIONTYPE nVersion;
@@ -86,6 +82,7 @@ struct UseAndroidNativeBufferParams {
     OMX_BUFFERHEADERTYPE **bufferHeader;
     const sp<ANativeWindowBuffer>& nativeBuffer;
 };
+#endif
 
 // A pointer to this struct is passed to OMX_GetParameter when the extension
 // index for the 'OMX.google.android.index.getAndroidNativeBufferUsage'
@@ -115,9 +112,5 @@ struct PrependSPSPPSToIDRFramesParams {
     OMX_VERSIONTYPE nVersion;
     OMX_BOOL bEnable;
 };
-
-}  // namespace android
-
-extern android::OMXPluginBase *createOMXPlugin();
 
 #endif  // HARDWARE_API_H_
