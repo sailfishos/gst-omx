@@ -633,6 +633,59 @@ done:
   return ret;
 }
 
+static gboolean
+gst_omc_video_dec_set_src_caps (GstOMXVideoDec * self)
+{
+  GstCaps *caps;
+  GstBaseVideoCodec *codec = GST_BASE_VIDEO_CODEC (self);
+  GstVideoState *state = &codec->state;
+  gboolean ret;
+  GstStructure *structure;
+
+  if (!(self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
+    return gst_base_video_decoder_set_src_caps (GST_BASE_VIDEO_DECODER (self));
+  }
+
+  g_return_val_if_fail (state->width != 0, FALSE);
+  g_return_val_if_fail (state->height != 0, FALSE);
+
+  GST_BASE_VIDEO_CODEC_STREAM_LOCK (codec);
+
+  if (state->fps_n == 0 || state->fps_d == 0) {
+    state->fps_n = 0;
+    state->fps_d = 1;
+  }
+
+  if (state->par_n == 0 || state->par_d == 0) {
+    state->par_n = 1;
+    state->par_d = 1;
+  }
+
+  caps = gst_caps_new_simple ("video/x-android-buffer", NULL);
+  structure = gst_caps_get_structure (caps, 0);
+
+  gst_structure_set (structure,
+      "width", G_TYPE_INT, state->width,
+      "height", G_TYPE_INT, state->height,
+      "framerate", GST_TYPE_FRACTION, state->fps_n, state->fps_d,
+      "pixel-aspect-ratio", GST_TYPE_FRACTION, state->par_n, state->par_d,
+      NULL);
+
+  gst_caps_set_simple (caps, "interlaced",
+      G_TYPE_BOOLEAN, state->interlaced, NULL);
+
+  GST_DEBUG_OBJECT (self, "setting caps %" GST_PTR_FORMAT, caps);
+  ret = gst_pad_set_caps (GST_BASE_VIDEO_CODEC_SRC_PAD (codec), caps);
+
+  gst_caps_unref (caps);
+
+  state->bytes_per_picture = 0;
+
+  GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (codec);
+
+  return ret;
+}
+
 static void
 gst_omx_video_dec_loop (GstOMXVideoDec * self)
 {
@@ -683,6 +736,11 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         state->format = GST_VIDEO_FORMAT_YUMB;
         break;
       default:
+        if (port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+          state->format = GST_VIDEO_FORMAT_UNKNOWN;
+          break;
+        }
+
         GST_ERROR_OBJECT (self, "Unsupported color format: %d",
             port_def.format.video.eColorFormat);
         if (buf)
@@ -697,7 +755,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
 
     /* Take framerate and pixel-aspect-ratio from sinkpad caps */
 
-    if (!gst_base_video_decoder_set_src_caps (GST_BASE_VIDEO_DECODER (self))) {
+    if (!gst_omc_video_dec_set_src_caps (self)) {
       if (buf)
         gst_omx_port_release_buffer (self->out_port, buf);
       GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
@@ -763,7 +821,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
 
       flow_ret = gst_pad_push (GST_BASE_VIDEO_CODEC_SRC_PAD (self), outbuf);
     } else if (buf->omx_buf->nFilledLen > 0) {
-      if (GST_BASE_VIDEO_CODEC (self)->state.bytes_per_picture == 0) {
+      if (GST_BASE_VIDEO_CODEC (self)->state.bytes_per_picture == 0
+          && !(self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
         /* FIXME: If the sinkpad caps change we have currently no way
          * to allocate new src buffers because basevideodecoder assumes
          * that the caps on both pads are equivalent all the time
@@ -976,6 +1035,12 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
   gint old_index;
   GstStructure *s;
   guint32 fourcc;
+
+  if (self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+    GST_DEBUG_OBJECT (self,
+        "Android native buffers in use. Negotiations will not take place!");
+    return TRUE;
+  }
 
   templ_caps =
       gst_pad_get_pad_template_caps (GST_BASE_VIDEO_CODEC_SRC_PAD (self));

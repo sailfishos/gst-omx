@@ -40,6 +40,7 @@
 #include "hybris.h"
 #include <dlfcn.h>
 #endif
+#include "HardwareAPI.h"
 
 GST_DEBUG_CATEGORY (gstomx_debug);
 #define GST_CAT_DEFAULT gstomx_debug
@@ -552,6 +553,15 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
     }
   }
 
+  if (comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+    comp->gralloc = gst_gralloc_new ();
+    if (!comp->gralloc) {
+      GST_ERROR_OBJECT (parent, "Failed to initialize gralloc");
+      gst_omx_component_free (comp);
+      return NULL;
+    }
+  }
+
   OMX_GetState (comp->handle, &comp->state);
 
   return comp;
@@ -594,6 +604,10 @@ gst_omx_component_free (GstOMXComponent * comp)
   gst_omx_rec_mutex_clear (&comp->state_lock);
 
   gst_object_unref (comp->parent);
+
+  if (comp->gralloc) {
+    gst_gralloc_unref (comp->gralloc);
+  }
 
   g_slice_free (GstOMXComponent, comp);
 }
@@ -751,6 +765,81 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
     GST_ERROR_OBJECT (comp->parent, "Failed to add port %u: %s (0x%08x)", index,
         gst_omx_error_to_string (err), err);
     return NULL;
+  }
+
+  /* We should immediately enable Android native buffers */
+  if (comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS
+      && port_def.eDir == OMX_DirOutput) {
+    OMX_INDEXTYPE extension;
+    struct EnableAndroidNativeBuffersParams param;
+    struct GetAndroidNativeBufferUsageParams usage_param;
+    int our_usage = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_RARELY
+        | GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_HW_FB
+        | GRALLOC_USAGE_EXTERNAL_DISP | GRALLOC_USAGE_HW_TEXTURE;
+
+    GST_DEBUG_OBJECT (comp->parent, "Trying to enable Android native buffers");
+
+    err = OMX_GetExtensionIndex (comp->handle,
+        (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers2",
+        &extension);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (comp->parent,
+          "Failed to get Android native buffers extension index on port %u: %s (0x%08x)",
+          index, gst_omx_error_to_string (err), err);
+      return NULL;
+    }
+
+    GST_OMX_INIT_STRUCT (&param);
+    param.nPortIndex = index;
+    param.enable = OMX_TRUE;
+
+    err = gst_omx_component_set_parameter (comp, extension, &param);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (comp->parent, "Failed to enable extension: %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+
+      return NULL;
+    }
+
+    /* Now we need to get the new port definition as it might have changed. */
+    err = gst_omx_component_get_parameter (comp, OMX_IndexParamPortDefinition,
+        &port_def);
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (comp->parent, "Failed to add port %u: %s (0x%08x)",
+          index, gst_omx_error_to_string (err), err);
+      return NULL;
+    }
+
+    /* Now get usage */
+    err = OMX_GetExtensionIndex (comp->handle,
+        (OMX_STRING) "OMX.google.android.index.getAndroidNativeBufferUsage",
+        &extension);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (comp->parent,
+          "Failed to get buffer usage extension index on port %u: %s (0x%08x)",
+          index, gst_omx_error_to_string (err), err);
+      return NULL;
+    }
+
+    GST_OMX_INIT_STRUCT (&usage_param);
+    usage_param.nPortIndex = index;
+
+    err = gst_omx_component_get_parameter (comp, extension, &param);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (comp->parent, "Failed to get usage: %s (0x%08x)",
+          gst_omx_error_to_string (err), err);
+
+      return NULL;
+    }
+
+    comp->android_buffer_usage = usage_param.nUsage;
+    comp->android_buffer_usage |= our_usage;
+
+    GST_DEBUG_OBJECT (comp->parent, "Enabled Android native buffers");
   }
 
   port = g_slice_new0 (GstOMXPort);
@@ -1442,9 +1531,28 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
     g_ptr_array_add (port->buffers, buf);
 
     gst_omx_rec_mutex_begin_recursion (&port->port_lock);
-    err =
-        OMX_AllocateBuffer (comp->handle, &buf->omx_buf, port->index, buf,
-        port->port_def.nBufferSize);
+    if (port->port_def.eDir == OMX_DirOutput
+        && comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+      int format = port->port_def.format.video.eColorFormat;
+      int width = port->port_def.format.video.nFrameWidth;
+      int height = port->port_def.format.video.nFrameHeight;
+
+      buf->android_handle =
+          gst_gralloc_allocate (comp->gralloc, width, height, format,
+          comp->android_buffer_usage, &buf->stride);
+      if (!buf->android_handle) {
+        err = OMX_ErrorUndefined;
+      } else {
+        err =
+            OMX_UseBuffer (comp->handle, &buf->omx_buf, port->index, buf,
+            port->port_def.nBufferSize, (OMX_U8 *) buf->android_handle);
+      }
+    } else {
+      err =
+          OMX_AllocateBuffer (comp->handle, &buf->omx_buf, port->index, buf,
+          port->port_def.nBufferSize);
+    }
+
     gst_omx_rec_mutex_end_recursion (&port->port_lock);
 
     if (err != OMX_ErrorNone) {
@@ -1548,6 +1656,11 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
 
       gst_omx_rec_mutex_begin_recursion (&port->port_lock);
       tmp = OMX_FreeBuffer (comp->handle, port->index, buf->omx_buf);
+
+      if (buf->android_handle) {
+        gst_gralloc_free (comp->gralloc, buf->android_handle);
+      }
+
       gst_omx_rec_mutex_end_recursion (&port->port_lock);
 
       if (tmp != OMX_ErrorNone) {

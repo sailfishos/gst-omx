@@ -27,6 +27,7 @@
 #include <OMX_Component.h>
 
 #include "gstomxrecmutex.h"
+#include <gst/gstgralloc.h>
 
 G_BEGIN_DECLS
 
@@ -195,6 +196,9 @@ struct _GstOMXComponent {
 
   gint have_pending_reconfigure_outports; /* atomic */
   GList *pending_reconfigure_outports;
+
+  GstGralloc *gralloc;
+  int android_buffer_usage;
 };
 
 struct _GstOMXBuffer {
@@ -208,6 +212,9 @@ struct _GstOMXBuffer {
 
   /* Cookie of the settings when this buffer was allocated */
   gint settings_cookie;
+
+  buffer_handle_t android_handle;
+  int stride;
 };
 
 extern GQuark     gst_omx_element_name_quark;
