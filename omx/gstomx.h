@@ -28,6 +28,7 @@
 
 #include "gstomxrecmutex.h"
 #include <gst/gstgralloc.h>
+#include <gst/gstnativebuffer.h>
 
 G_BEGIN_DECLS
 
@@ -215,6 +216,12 @@ struct _GstOMXBuffer {
 
   buffer_handle_t android_handle;
   int stride;
+  GstNativeBuffer *native_buffer;
+
+  /* TRUE if we have pushed the buffer downstream */
+  gboolean pushed;
+  /* TRUE if we can return buffer back to decoder */
+  gboolean can_return;
 };
 
 extern GQuark     gst_omx_element_name_quark;

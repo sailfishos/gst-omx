@@ -1259,6 +1259,10 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
   }
 
   g_assert (buf == buf->omx_buf->pAppPrivate);
+  g_assert (buf->pushed == FALSE);
+  g_assert ((buf->port->port_def.eDir == OMX_DirInput)
+      || (buf->port->port_def.eDir == OMX_DirOutput
+          && buf->can_return == TRUE));
 
   /* FIXME: What if the settings cookies don't match? */
 
@@ -1527,6 +1531,8 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
     buf = g_slice_new0 (GstOMXBuffer);
     buf->port = port;
     buf->used = FALSE;
+    buf->pushed = FALSE;
+    buf->can_return = FALSE;
     buf->settings_cookie = port->settings_cookie;
     g_ptr_array_add (port->buffers, buf);
 
@@ -1546,6 +1552,11 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
         err =
             OMX_UseBuffer (comp->handle, &buf->omx_buf, port->index, buf,
             port->port_def.nBufferSize, (OMX_U8 *) buf->android_handle);
+
+        if (err == OMX_ErrorNone) {
+          buf->native_buffer =
+              gst_native_buffer_new (buf->android_handle, comp->gralloc);
+        }
       }
     } else {
       err =
@@ -1658,7 +1669,14 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
       tmp = OMX_FreeBuffer (comp->handle, port->index, buf->omx_buf);
 
       if (buf->android_handle) {
+        /* TODO: We might be pulling the plug here while some other element is still using that buffer. */
         gst_gralloc_free (comp->gralloc, buf->android_handle);
+      }
+
+      if (buf->native_buffer) {
+        /* Reset the callback so we don't get called. */
+        buf->native_buffer->finalize_callback = NULL;
+        gst_buffer_unref (GST_BUFFER (buf->native_buffer));
       }
 
       gst_omx_rec_mutex_end_recursion (&port->port_lock);
