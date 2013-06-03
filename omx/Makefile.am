@@ -65,7 +65,7 @@ libgstopenmax_la_LIBADD = \
 	-lgstpbutils-@GST_MAJORMINOR@ \
 	-lgstvideo-@GST_MAJORMINOR@ \
 	$(GST_BASE_LIBS) \
-	$(GST_LIBS) -lgstgralloc
+	$(GST_LIBS) -lgstgralloc -lgstnativebuffer
 libgstopenmax_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 
 EXTRA_DIST = openmax gstomx.conf
