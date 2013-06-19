@@ -89,6 +89,8 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_ANDROID_BUFFERS                                  G_GUINT64_CONSTANT (0x0000000000000200)
 
+/* If we should use metadata for video encoders */
+#define GST_OMX_HACK_VIDEO_METADATA                                   G_GUINT64_CONSTANT (0x0000000000000400)
 
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;
