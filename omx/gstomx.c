@@ -1260,9 +1260,11 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
 
   g_assert (buf == buf->omx_buf->pAppPrivate);
   g_assert (buf->pushed == FALSE);
-  g_assert ((buf->port->port_def.eDir == OMX_DirInput)
-      || (buf->port->port_def.eDir == OMX_DirOutput
-          && buf->can_return == TRUE));
+  if (buf->port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+    g_assert ((buf->port->port_def.eDir == OMX_DirInput)
+        || (buf->port->port_def.eDir == OMX_DirOutput
+            && buf->can_return == TRUE));
+  }
 
   /* FIXME: What if the settings cookies don't match? */
 
