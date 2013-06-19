@@ -111,7 +111,6 @@ gst_omx_mpeg4_video_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
   OMX_VIDEO_MPEG4LEVELTYPE level = OMX_VIDEO_MPEG4Level1;
   OMX_VIDEO_PARAM_PROFILELEVELTYPE param;
   OMX_ERRORTYPE err;
-  OMX_VIDEO_PARAM_MPEG4TYPE mpeg4type;
 
   peercaps = gst_pad_peer_get_caps (GST_BASE_VIDEO_CODEC_SRC_PAD (enc));
   if (peercaps) {
@@ -208,68 +207,6 @@ gst_omx_mpeg4_video_enc_set_format (GstOMXVideoEnc * enc, GstOMXPort * port,
   } else if (err != OMX_ErrorNone) {
     GST_ERROR_OBJECT (self,
         "Error setting profile %d and level %d: %s (0x%08x)", profile, level,
-        gst_omx_error_to_string (err), err);
-    return FALSE;
-  }
-
-  GST_OMX_INIT_STRUCT (&mpeg4type);
-  mpeg4type.nPortIndex = param.nPortIndex;
-
-  err =
-      gst_omx_component_get_parameter (GST_OMX_VIDEO_ENC (self)->component,
-      OMX_IndexParamVideoMpeg4, &mpeg4type);
-  if (err == OMX_ErrorUnsupportedIndex) {
-    GST_WARNING_OBJECT (self,
-        "Getting MPEG4 parameters not supported by component");
-  } else if (err != OMX_ErrorNone) {
-    GST_ERROR_OBJECT (self,
-        "Error getting MPEG4 parameters: %s (0x%08x)",
-        gst_omx_error_to_string (err), err);
-    return FALSE;
-  }
-
-  mpeg4type.nSliceHeaderSpacing = 0;
-  mpeg4type.bSVH = FALSE;
-  mpeg4type.bGov = FALSE;
-  mpeg4type.nAllowedPictureTypes =
-      OMX_VIDEO_PictureTypeI | OMX_VIDEO_PictureTypeP;
-  mpeg4type.nPFrames = 0xFFFFFFFF;      /* TODO: this is hardcoded for now */
-  /*
-     mpeg4type.nPFrames = setPFramesSpacing(iFramesInterval, frameRate);
-     if (mpeg4type.nPFrames == 0) {
-     mpeg4type.nAllowedPictureTypes = OMX_VIDEO_PictureTypeI;
-     }
-   */
-
-  mpeg4type.nBFrames = 0;
-  mpeg4type.nIDCVLCThreshold = 0;
-  mpeg4type.bACPred = OMX_TRUE;
-  mpeg4type.nMaxPacketSize = 256;
-  mpeg4type.nTimeIncRes = 1000;
-  mpeg4type.nHeaderExtension = 0;
-  mpeg4type.bReversibleVLC = OMX_FALSE;
-
-  /* TODO: Do we need to check those? */
-  mpeg4type.eProfile = param.eProfile;
-  mpeg4type.eLevel = param.eLevel;
-  /* Check profile and level parameters */
-  /*
-     err = mOMX->setParameter(
-     mNode, OMX_IndexParamVideoMpeg4, &mpeg4type, sizeof(mpeg4type));
-     CHECK_EQ(err, (status_t)OK);
-     CHECK_EQ(setupBitRate(bitRate), (status_t)OK);
-     CHECK_EQ(setupErrorCorrectionParameters(), (status_t)OK);
-   */
-
-  err =
-      gst_omx_component_set_parameter (GST_OMX_VIDEO_ENC (self)->component,
-      OMX_IndexParamVideoMpeg4, &mpeg4type);
-  if (err == OMX_ErrorUnsupportedIndex) {
-    GST_WARNING_OBJECT (self,
-        "Setting MPEG4 parameters not supported by component");
-  } else if (err != OMX_ErrorNone) {
-    GST_ERROR_OBJECT (self,
-        "Error setting MPEG4 parameters: %s (0x%08x)",
         gst_omx_error_to_string (err), err);
     return FALSE;
   }
