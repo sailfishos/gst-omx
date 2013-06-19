@@ -1180,8 +1180,8 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
   if (!gst_structure_get_fourcc (s, "format", &fourcc) ||
       (format =
           gst_video_format_from_fourcc (fourcc)) == GST_VIDEO_FORMAT_UNKNOWN) {
-    GST_WARNING_OBJECT (self, "Caps doesn't specify a format. Forcing YUMB");
-    format = GST_VIDEO_FORMAT_YUMB;
+    GST_ERROR_OBJECT (self, "Invalid caps: %" GST_PTR_FORMAT, intersection);
+    return FALSE;
   }
 
   switch (format) {
