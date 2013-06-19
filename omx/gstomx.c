@@ -1542,10 +1542,11 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
       int format = port->port_def.format.video.eColorFormat;
       int width = port->port_def.format.video.nFrameWidth;
       int height = port->port_def.format.video.nFrameHeight;
+      int stride = 0;
 
       buf->android_handle =
           gst_gralloc_allocate (comp->gralloc, width, height, format,
-          comp->android_buffer_usage, &buf->stride);
+          comp->android_buffer_usage, &stride);
       if (!buf->android_handle) {
         err = OMX_ErrorUndefined;
       } else {
@@ -1556,7 +1557,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
         if (err == OMX_ErrorNone) {
           buf->native_buffer =
               gst_native_buffer_new (buf->android_handle, comp->gralloc,
-              buf->stride);
+              stride);
         }
       }
     } else {

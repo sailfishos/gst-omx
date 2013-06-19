@@ -215,7 +215,6 @@ struct _GstOMXBuffer {
   gint settings_cookie;
 
   buffer_handle_t android_handle;
-  int stride;
   GstNativeBuffer *native_buffer;
 
   /* TRUE if we have pushed the buffer downstream */
