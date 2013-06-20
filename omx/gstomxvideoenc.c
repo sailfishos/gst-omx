@@ -1089,6 +1089,14 @@ gst_omx_video_enc_set_format (GstBaseVideoEncoder * encoder,
   if (!gst_omx_port_update_port_definition (self->out_port, NULL))
     return FALSE;
 
+  /* qualcomm encoders on Nexus 4 are known to not accept any other color format but the one it supports
+     yet it simply logs a warning so this check will not work :| */
+  if (port_def.format.video.eColorFormat !=
+      self->in_port->port_def.format.video.eColorFormat) {
+    GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
+    return FALSE;
+  }
+
   if (klass->set_format) {
     if (!klass->set_format (self, self->in_port, state)) {
       GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
