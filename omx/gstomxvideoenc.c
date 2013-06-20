@@ -322,6 +322,9 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
 
   klass->default_sink_template_caps = "video/x-raw-yuv, "
       "width = " GST_VIDEO_SIZE_RANGE ", "
+      "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE
+      "; video/x-raw-data, "
+      "width = " GST_VIDEO_SIZE_RANGE ", "
       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
 
   klass->handle_output_frame =
