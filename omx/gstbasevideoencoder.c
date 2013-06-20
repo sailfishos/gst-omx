@@ -358,9 +358,14 @@ gst_base_video_encoder_sink_setcaps (GstPad * pad, GstCaps * caps)
   changed = changed || (tmp_state.have_interlaced != state->have_interlaced
       || tmp_state.interlaced != state->interlaced);
 
-  tmp_state.bytes_per_picture =
-      gst_video_format_get_size (tmp_state.format, tmp_state.width,
-      tmp_state.height);
+  if (tmp_state.format != GST_VIDEO_FORMAT_UNKNOWN) {
+    tmp_state.bytes_per_picture =
+        gst_video_format_get_size (tmp_state.format, tmp_state.width,
+        tmp_state.height);
+  } else {
+    tmp_state.bytes_per_picture = 0;
+  }
+
   tmp_state.clean_width = tmp_state.width;
   tmp_state.clean_height = tmp_state.height;
   tmp_state.clean_offset_left = 0;
