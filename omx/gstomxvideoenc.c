@@ -1077,18 +1077,22 @@ gst_omx_video_enc_set_format (GstBaseVideoEncoder * encoder,
       return FALSE;
   }
 
-  switch (state->format) {
-    case GST_VIDEO_FORMAT_I420:
-      port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420Planar;
-      break;
-    case GST_VIDEO_FORMAT_NV12:
-      port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
-      break;
-    default:
-      GST_ERROR_OBJECT (self, "Unsupported caps %" GST_PTR_FORMAT, state->caps);
-      return FALSE;
-      break;
+  if (!self->video_metadata) {
+    switch (state->format) {
+      case GST_VIDEO_FORMAT_I420:
+        port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420Planar;
+        break;
+      case GST_VIDEO_FORMAT_NV12:
+        port_def.format.video.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
+        break;
+      default:
+        GST_ERROR_OBJECT (self, "Unsupported caps %" GST_PTR_FORMAT,
+            state->caps);
+        return FALSE;
+        break;
+    }
   }
+
   port_def.format.video.nFrameWidth = state->width;
   port_def.format.video.nFrameHeight = state->height;
   if (state->fps_n == 0) {
