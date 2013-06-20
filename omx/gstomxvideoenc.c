@@ -99,7 +99,8 @@ enum
   PROP_TARGET_BITRATE,
   PROP_QUANT_I_FRAMES,
   PROP_QUANT_P_FRAMES,
-  PROP_QUANT_B_FRAMES
+  PROP_QUANT_B_FRAMES,
+  PROP_VIDEO_METADATA
 };
 
 /* FIXME: Better defaults */
@@ -108,7 +109,7 @@ enum
 #define GST_OMX_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT (0xffffffff)
 #define GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT (0xffffffff)
-
+#define DEFAULT_VIDEO_METADATA                   TRUE
 /* class initialization */
 
 #define DEBUG_INIT(bla) \
@@ -301,6 +302,11 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_READY));
 
+  g_object_class_install_property (gobject_class, PROP_VIDEO_METADATA,
+      g_param_spec_boolean ("video-metadata", "Video metadata",
+          "Input will be video metadata",
+          DEFAULT_VIDEO_METADATA, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   element_class->change_state =
       GST_DEBUG_FUNCPTR (gst_omx_video_enc_change_state);
 
@@ -330,6 +336,7 @@ gst_omx_video_enc_init (GstOMXVideoEnc * self, GstOMXVideoEncClass * klass)
   self->quant_i_frames = GST_OMX_VIDEO_ENC_QUANT_I_FRAMES_DEFAULT;
   self->quant_p_frames = GST_OMX_VIDEO_ENC_QUANT_P_FRAMES_DEFAULT;
   self->quant_b_frames = GST_OMX_VIDEO_ENC_QUANT_B_FRAMES_DEFAULT;
+  self->video_metadata = DEFAULT_VIDEO_METADATA;
 
   self->drain_lock = g_mutex_new ();
   self->drain_cond = g_cond_new ();
@@ -537,6 +544,9 @@ gst_omx_video_enc_set_property (GObject * object, guint prop_id,
     case PROP_QUANT_B_FRAMES:
       self->quant_b_frames = g_value_get_uint (value);
       break;
+    case PROP_VIDEO_METADATA:
+      self->video_metadata = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -564,6 +574,9 @@ gst_omx_video_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_QUANT_B_FRAMES:
       g_value_set_uint (value, self->quant_b_frames);
+      break;
+    case PROP_VIDEO_METADATA:
+      g_value_set_boolean (value, self->video_metadata);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
