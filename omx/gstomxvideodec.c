@@ -169,6 +169,21 @@ gst_omx_video_dec_base_init (gpointer g_class)
   gst_element_class_add_pad_template (element_class, templ);
   gst_object_unref (templ);
 
+  if ((hacks =
+          g_key_file_get_string_list (config, element_name, "hacks", NULL,
+              NULL))) {
+#ifndef GST_DISABLE_GST_DEBUG
+    gchar **walk = hacks;
+
+    while (*walk) {
+      GST_DEBUG ("Using hack: %s", *walk);
+      walk++;
+    }
+#endif
+
+    videodec_class->hacks = gst_omx_parse_hacks (hacks);
+  }
+
   err = NULL;
   if (!(template_caps =
           g_key_file_get_string (config, element_name, "src-template-caps",
@@ -194,21 +209,6 @@ gst_omx_video_dec_base_init (gpointer g_class)
   g_free (template_caps);
   gst_element_class_add_pad_template (element_class, templ);
   gst_object_unref (templ);
-
-  if ((hacks =
-          g_key_file_get_string_list (config, element_name, "hacks", NULL,
-              NULL))) {
-#ifndef GST_DISABLE_GST_DEBUG
-    gchar **walk = hacks;
-
-    while (*walk) {
-      GST_DEBUG ("Using hack: %s", *walk);
-      walk++;
-    }
-#endif
-
-    videodec_class->hacks = gst_omx_parse_hacks (hacks);
-  }
 }
 
 static void
