@@ -76,6 +76,11 @@ enum
 GST_BOILERPLATE_FULL (GstOMXVideoDec, gst_omx_video_dec, GstBaseVideoDecoder,
     GST_TYPE_BASE_VIDEO_DECODER, DEBUG_INIT);
 
+#define ANDROID_BUFFERS_CAPS_TEMPLATE GST_NATIVE_BUFFER_NAME ", " \
+"width = " GST_VIDEO_SIZE_RANGE ", " \
+"height = " GST_VIDEO_SIZE_RANGE ", " \
+"framerate = " GST_VIDEO_FPS_RANGE
+
 static void
 gst_omx_video_dec_base_init (gpointer g_class)
 {
@@ -185,6 +190,14 @@ gst_omx_video_dec_base_init (gpointer g_class)
   }
 
   err = NULL;
+  if (videodec_class->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+    template_caps = g_strdup (ANDROID_BUFFERS_CAPS_TEMPLATE);
+    caps = gst_caps_from_string (template_caps);
+    g_assert (caps != NULL);
+
+    goto out;
+  }
+
   if (!(template_caps =
           g_key_file_get_string (config, element_name, "src-template-caps",
               &err))) {
@@ -205,6 +218,8 @@ gst_omx_video_dec_base_init (gpointer g_class)
       g_assert (caps != NULL);
     }
   }
+
+out:
   templ = gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS, caps);
   g_free (template_caps);
   gst_element_class_add_pad_template (element_class, templ);
