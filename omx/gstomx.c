@@ -1557,7 +1557,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
         if (err == OMX_ErrorNone) {
           buf->native_buffer =
               gst_native_buffer_new (buf->android_handle, comp->gralloc,
-              stride);
+              stride, comp->android_buffer_usage);
         }
       }
     } else {
