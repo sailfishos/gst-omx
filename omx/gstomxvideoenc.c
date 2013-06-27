@@ -26,14 +26,7 @@
 #include <string.h>
 
 #include "gstomxvideoenc.h"
-
-struct StoreMetaDataInBuffersParams
-{
-  OMX_U32 nSize;
-  OMX_VERSIONTYPE nVersion;
-  OMX_U32 nPortIndex;
-  OMX_BOOL bStoreMetaData;
-};
+#include "HardwareAPI.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
