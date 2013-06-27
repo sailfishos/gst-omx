@@ -27,6 +27,14 @@
 
 #include "gstomxvideoenc.h"
 
+struct StoreMetaDataInBuffersParams
+{
+  OMX_U32 nSize;
+  OMX_VERSIONTYPE nVersion;
+  OMX_U32 nPortIndex;
+  OMX_BOOL bStoreMetaData;
+};
+
 GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
 #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
 
@@ -58,11 +66,13 @@ typedef struct _BufferIdentification BufferIdentification;
 struct _BufferIdentification
 {
   guint64 timestamp;
+  GstBuffer *input;
 };
 
 static void
 buffer_identification_free (BufferIdentification * id)
 {
+  gst_buffer_unref (id->input);
   g_slice_free (BufferIdentification, id);
 }
 
@@ -369,6 +379,38 @@ gst_omx_video_enc_open (GstOMXVideoEnc * self)
 
   if (!self->in_port || !self->out_port)
     return FALSE;
+
+  if (self->video_metadata) {
+    OMX_ERRORTYPE err;
+    OMX_INDEXTYPE extension;
+    struct StoreMetaDataInBuffersParams param;
+
+    GST_DEBUG_OBJECT (self, "Enabling metadata mode");
+    err =
+        OMX_GetExtensionIndex (self->component->handle,
+        (OMX_STRING) "OMX.google.android.index.storeMetaDataInBuffers",
+        &extension);
+
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (self,
+          "Error %s (0x%08x) trying to get metadata extension index",
+          gst_omx_error_to_string (err), err);
+      return FALSE;
+    }
+
+    GST_OMX_INIT_STRUCT (&param);
+
+    param.nPortIndex = klass->in_port_index;
+    param.bStoreMetaData = OMX_TRUE;
+
+    err = gst_omx_component_set_parameter (self->component, extension, &param);
+    if (err != OMX_ErrorNone) {
+      GST_ERROR_OBJECT (self,
+          "Error %s (0x%08x) trying to enable metadata storage",
+          gst_omx_error_to_string (err), err);
+      return FALSE;
+    }
+  }
 
   /* Set properties */
   {
@@ -1222,7 +1264,7 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
   }
 
   /* Same strides and everything */
-  if (GST_BUFFER_SIZE (inbuf) ==
+  if (self->video_metadata || GST_BUFFER_SIZE (inbuf) ==
       outbuf->omx_buf->nAllocLen - outbuf->omx_buf->nOffset) {
     outbuf->omx_buf->nFilledLen = GST_BUFFER_SIZE (inbuf);
     memcpy (outbuf->omx_buf->pBuffer + outbuf->omx_buf->nOffset,
@@ -1479,6 +1521,7 @@ gst_omx_video_enc_handle_frame (GstBaseVideoEncoder * encoder,
 
     id = g_slice_new0 (BufferIdentification);
     id->timestamp = buf->omx_buf->nTimeStamp;
+    id->input = gst_buffer_ref (frame->sink_buffer);
     frame->coder_hook = id;
     frame->coder_hook_destroy_notify =
         (GDestroyNotify) buffer_identification_free;
