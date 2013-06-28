@@ -201,6 +201,8 @@ gst_base_video_encoder_class_init (GstBaseVideoEncoderClass * klass)
 static void
 gst_base_video_encoder_reset (GstBaseVideoEncoder * base_video_encoder)
 {
+  GstVideoState *state;
+
   GST_BASE_VIDEO_CODEC_STREAM_LOCK (base_video_encoder);
 
   base_video_encoder->presentation_frame_number = 0;
@@ -221,6 +223,9 @@ gst_base_video_encoder_reset (GstBaseVideoEncoder * base_video_encoder)
       (GFunc) gst_event_unref, NULL);
   g_list_free (base_video_encoder->current_frame_events);
   base_video_encoder->current_frame_events = NULL;
+
+  state = &GST_BASE_VIDEO_CODEC (base_video_encoder)->state;
+  memset (state, 0, sizeof (GstVideoState));
 
   GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (base_video_encoder);
 }
