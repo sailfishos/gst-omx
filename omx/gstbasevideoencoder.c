@@ -774,6 +774,7 @@ gst_base_video_encoder_chain (GstPad * pad, GstBuffer * buf)
   GstBaseVideoEncoderClass *klass;
   GstVideoFrame *frame;
   GstFlowReturn ret = GST_FLOW_OK;
+  gboolean drop_buffer = FALSE;
 
   base_video_encoder = GST_BASE_VIDEO_ENCODER (gst_pad_get_parent (pad));
   klass = GST_BASE_VIDEO_ENCODER_GET_CLASS (base_video_encoder);
@@ -784,6 +785,7 @@ gst_base_video_encoder_chain (GstPad * pad, GstBuffer * buf)
 
   if (!GST_PAD_CAPS (pad)) {
     ret = GST_FLOW_NOT_NEGOTIATED;
+    drop_buffer = TRUE;
     goto done;
   }
 
@@ -795,6 +797,7 @@ gst_base_video_encoder_chain (GstPad * pad, GstBuffer * buf)
 
   if (base_video_encoder->at_eos) {
     ret = GST_FLOW_UNEXPECTED;
+    drop_buffer = TRUE;
     goto done;
   }
 
@@ -808,6 +811,7 @@ gst_base_video_encoder_chain (GstPad * pad, GstBuffer * buf)
             GST_FORMAT_TIME, start, stop, &clip_start, &clip_stop)) {
       GST_DEBUG_OBJECT (base_video_encoder,
           "clipping to segment dropped frame");
+      drop_buffer = TRUE;
       goto done;
     }
   }
@@ -882,6 +886,10 @@ gst_base_video_encoder_chain (GstPad * pad, GstBuffer * buf)
   ret = klass->handle_frame (base_video_encoder, frame);
 
 done:
+  if (drop_buffer) {
+    gst_buffer_unref (buf);
+  }
+
   GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (base_video_encoder);
 
   g_object_unref (base_video_encoder);
