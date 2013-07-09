@@ -773,9 +773,6 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
     OMX_INDEXTYPE extension;
     struct EnableAndroidNativeBuffersParams param;
     struct GetAndroidNativeBufferUsageParams usage_param;
-    int our_usage = GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_RARELY
-        | GRALLOC_USAGE_HW_COMPOSER | GRALLOC_USAGE_HW_FB
-        | GRALLOC_USAGE_EXTERNAL_DISP | GRALLOC_USAGE_HW_TEXTURE;
 
     GST_DEBUG_OBJECT (comp->parent, "Trying to enable Android native buffers");
 
@@ -837,7 +834,6 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
     }
 
     comp->android_buffer_usage = usage_param.nUsage;
-    comp->android_buffer_usage |= our_usage;
 
     GST_DEBUG_OBJECT (comp->parent, "Enabled Android native buffers");
   }
