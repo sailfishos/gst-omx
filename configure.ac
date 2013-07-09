@@ -158,6 +158,17 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_MAJORMINOR`"
 AC_SUBST(GLIB_PREFIX)
 AC_SUBST(GST_PREFIX)
 
+PKG_CHECK_MODULES(DROID, [
+  android-headers
+], [
+  AC_SUBST(DROID_CFLAGS)
+  AC_SUBST(DROID_LIBS)
+], [
+  AC_MSG_ERROR([
+      android-headers package is missing
+  ])
+])
+
 dnl Check for -Bsymbolic-functions linker flag used to avoid
 dnl intra-library PLT jumps, if available.
 AC_ARG_ENABLE(Bsymbolic,

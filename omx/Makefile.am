@@ -58,14 +58,19 @@ libgstopenmax_la_CFLAGS = \
 	$(GST_PLUGINS_BASE_CFLAGS) \
 	$(GST_BASE_CFLAGS) \
 	$(GST_CFLAGS) \
-	$(fixbaseclasses) -I/usr/include/android/
+	$(fixbaseclasses) \
+	$(DROID_CFLAGS)
+
 libgstopenmax_la_LIBADD = \
 	$(GST_PLUGINS_BASE_LIBS) \
 	-lgstaudio-@GST_MAJORMINOR@ \
 	-lgstpbutils-@GST_MAJORMINOR@ \
 	-lgstvideo-@GST_MAJORMINOR@ \
 	$(GST_BASE_LIBS) \
-	$(GST_LIBS) -lgstgralloc -lgstnativebuffer
+	$(GST_LIBS) -lgstgralloc \
+	-lgstnativebuffer \
+	$(DROID_LIBS)
+
 libgstopenmax_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 
 EXTRA_DIST = openmax gstomx.conf
