@@ -1559,7 +1559,10 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
         if (err == OMX_ErrorNone) {
           buf->native_buffer =
               gst_native_buffer_new (buf->android_handle, comp->gralloc,
-              stride, comp->android_buffer_usage);
+              port->port_def.format.video.nFrameWidth,
+              port->port_def.format.video.nFrameHeight,
+              stride, comp->android_buffer_usage,
+              port->port_def.format.video.eColorFormat);
         }
       }
     } else {
@@ -1679,7 +1682,8 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
 
       if (buf->native_buffer) {
         /* Reset the callback so we don't get called. */
-        buf->native_buffer->finalize_callback = NULL;
+        gst_native_buffer_set_finalize_callback (buf->native_buffer, NULL,
+            NULL);
         gst_buffer_unref (GST_BUFFER (buf->native_buffer));
       }
 

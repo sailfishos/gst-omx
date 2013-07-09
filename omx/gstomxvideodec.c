@@ -1346,9 +1346,8 @@ gst_omx_video_dec_set_format (GstBaseVideoDecoder * decoder,
     if (self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
       for (x = 0; x < self->out_port->buffers->len; x++) {
         GstOMXBuffer *buf = g_ptr_array_index (self->out_port->buffers, x);
-        buf->native_buffer->finalize_callback_data = buf;
-        buf->native_buffer->finalize_callback =
-            gst_omx_video_dec_resurrect_buffer;
+        gst_native_buffer_set_finalize_callback (buf->native_buffer,
+            gst_omx_video_dec_resurrect_buffer, buf);
       }
     }
 
