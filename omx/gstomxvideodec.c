@@ -731,7 +731,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   GstOMXAcquireBufferReturn acq_return;
   GstClockTimeDiff deadline;
   gboolean is_eos;
-  int x;
 
   klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
 
@@ -937,19 +936,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
 
   if (flow_ret != GST_FLOW_OK)
     goto flow_error;
-
-  /* Now let's see if we can return any buffers to the component */
-  for (x = 0; x < port->buffers->len; x++) {
-    GstOMXBuffer *buf = g_ptr_array_index (port->buffers, x);
-
-    if ((port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)
-        && buf->pushed == FALSE && buf->can_return == TRUE
-        && buf->used == FALSE) {
-      GST_DEBUG_OBJECT (self, "Buffer %p (%p) unused. Returning", buf,
-          buf->omx_buf->pBuffer);
-      gst_omx_port_release_buffer (port, buf);
-    }
-  }
 
   GST_BASE_VIDEO_CODEC_STREAM_UNLOCK (self);
 
@@ -1232,6 +1218,8 @@ gst_omx_video_dec_resurrect_buffer (void *data, GstNativeBuffer * buffer)
 
   buf->pushed = FALSE;
   buf->can_return = TRUE;
+
+  gst_omx_port_release_buffer (buf->port, buf);
 
   return TRUE;
 }
