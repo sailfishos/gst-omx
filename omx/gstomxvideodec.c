@@ -854,12 +854,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         goto invalid_buffer;
       }
 
-      /* TODO: We need to double check this */
-      if (port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
-        buf->pushed = TRUE;
-        buf->can_return = FALSE;
-      }
-
       flow_ret = gst_pad_push (GST_BASE_VIDEO_CODEC_SRC_PAD (self), outbuf);
     } else if (buf->omx_buf->nFilledLen > 0) {
       if (GST_BASE_VIDEO_CODEC (self)->state.bytes_per_picture == 0
@@ -892,9 +886,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         }
       }
 
-      buf->pushed = TRUE;
-      buf->can_return = FALSE;
-
       flow_ret =
           gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self),
           frame);
@@ -919,8 +910,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       GST_DEBUG_OBJECT (self, "Finished frame: %s",
           gst_flow_get_name (flow_ret));
 
-      GST_DEBUG_OBJECT (self, "Pushed buffer %p (%p): %i", buf,
-          buf->omx_buf->pBuffer, buf->pushed);
+      GST_DEBUG_OBJECT (self, "Pushed buffer %p (%p)", buf,
+          buf->omx_buf->pBuffer);
     }
 
     if (!(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
@@ -1215,9 +1206,6 @@ gst_omx_video_dec_resurrect_buffer (void *data, GstNativeBuffer * buffer)
       buf->omx_buf->pBuffer);
 
   gst_buffer_ref (GST_BUFFER (buffer));
-
-  buf->pushed = FALSE;
-  buf->can_return = TRUE;
 
   gst_omx_port_release_buffer (buf->port, buf);
 

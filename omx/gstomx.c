@@ -1255,12 +1255,6 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
   }
 
   g_assert (buf == buf->omx_buf->pAppPrivate);
-  g_assert (buf->pushed == FALSE);
-  if (buf->port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
-    g_assert ((buf->port->port_def.eDir == OMX_DirInput)
-        || (buf->port->port_def.eDir == OMX_DirOutput
-            && buf->can_return == TRUE));
-  }
 
   /* FIXME: What if the settings cookies don't match? */
 
@@ -1529,8 +1523,6 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
     buf = g_slice_new0 (GstOMXBuffer);
     buf->port = port;
     buf->used = FALSE;
-    buf->pushed = FALSE;
-    buf->can_return = FALSE;
     buf->settings_cookie = port->settings_cookie;
     g_ptr_array_add (port->buffers, buf);
 

@@ -216,11 +216,6 @@ struct _GstOMXBuffer {
 
   buffer_handle_t android_handle;
   GstNativeBuffer *native_buffer;
-
-  /* TRUE if we have pushed the buffer downstream */
-  gboolean pushed;
-  /* TRUE if we can return buffer back to decoder */
-  gboolean can_return;
 };
 
 extern GQuark     gst_omx_element_name_quark;
