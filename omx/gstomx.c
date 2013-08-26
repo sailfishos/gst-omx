@@ -1465,6 +1465,21 @@ gst_omx_port_is_flushing (GstOMXPort * port)
   return flushing;
 }
 
+static gboolean
+gst_omx_resurrect_buffer (void *data, GstNativeBuffer * buffer)
+{
+  GstOMXBuffer *buf = (GstOMXBuffer *) data;
+
+  GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)", buf,
+      buf->omx_buf->pBuffer);
+
+  gst_buffer_ref (GST_BUFFER (buffer));
+
+  gst_omx_port_release_buffer (buf->port, buf);
+
+  return TRUE;
+}
+
 /* Must be called while holding port->lock */
 static OMX_ERRORTYPE
 gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
@@ -1551,6 +1566,9 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
               port->port_def.format.video.nFrameHeight,
               stride, comp->android_buffer_usage,
               port->port_def.format.video.eColorFormat);
+
+          gst_native_buffer_set_finalize_callback (buf->native_buffer,
+              gst_omx_resurrect_buffer, buf);
         }
       }
     } else {

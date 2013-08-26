@@ -1198,21 +1198,6 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
 }
 
 static gboolean
-gst_omx_video_dec_resurrect_buffer (void *data, GstNativeBuffer * buffer)
-{
-  GstOMXBuffer *buf = (GstOMXBuffer *) data;
-
-  GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)", buf,
-      buf->omx_buf->pBuffer);
-
-  gst_buffer_ref (GST_BUFFER (buffer));
-
-  gst_omx_port_release_buffer (buf->port, buf);
-
-  return TRUE;
-}
-
-static gboolean
 gst_omx_video_dec_set_format (GstBaseVideoDecoder * decoder,
     GstVideoState * state)
 {
@@ -1221,7 +1206,6 @@ gst_omx_video_dec_set_format (GstBaseVideoDecoder * decoder,
   gboolean is_format_change = FALSE;
   gboolean needs_disable = FALSE;
   OMX_PARAM_PORTDEFINITIONTYPE port_def;
-  int x;
 
   self = GST_OMX_VIDEO_DEC (decoder);
   klass = GST_OMX_VIDEO_DEC_GET_CLASS (decoder);
@@ -1318,14 +1302,6 @@ gst_omx_video_dec_set_format (GstBaseVideoDecoder * decoder,
       return FALSE;
     if (gst_omx_port_allocate_buffers (self->out_port) != OMX_ErrorNone)
       return FALSE;
-
-    if (self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
-      for (x = 0; x < self->out_port->buffers->len; x++) {
-        GstOMXBuffer *buf = g_ptr_array_index (self->out_port->buffers, x);
-        gst_native_buffer_set_finalize_callback (buf->native_buffer,
-            gst_omx_video_dec_resurrect_buffer, buf);
-      }
-    }
 
     if (gst_omx_component_get_state (self->component,
             GST_CLOCK_TIME_NONE) != OMX_StateIdle)
