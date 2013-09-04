@@ -951,12 +951,30 @@ gst_omx_video_enc_loop (GstOMXVideoEnc * self)
 
     gst_omx_port_release_buffer (port, buf);
 
-    self->downstream_flow_ret = flow_ret;
-
+    if (self->eos && klass->hacks & GST_OMX_HACK_NO_EMPTY_EOS_BUFFER
+        && flow_ret == GST_FLOW_UNEXPECTED) {
+      /* We cannot stop the task now before all buffers have been procesed */
+      flow_ret = GST_FLOW_OK;
+      GST_LOG_OBJECT (self, "eos but not sending flow unexpected");
+    } else {
+      self->downstream_flow_ret = flow_ret;
+    }
   } else {
+    guint len;
     g_assert ((klass->hacks & GST_OMX_HACK_NO_EMPTY_EOS_BUFFER));
     GST_BASE_VIDEO_CODEC_STREAM_LOCK (self);
-    flow_ret = GST_FLOW_UNEXPECTED;
+
+    len = g_list_length (GST_BASE_VIDEO_CODEC (self)->frames);
+    if (len != 0) {
+      GST_DEBUG_OBJECT (self, "%d frames left to process before EOS.", len);
+
+      /* push buffer back */
+      gst_omx_rec_mutex_lock (&self->out_port->port_lock);
+      g_queue_push_tail (self->out_port->pending_buffers, NULL);
+      gst_omx_rec_mutex_unlock (&self->out_port->port_lock);
+    } else {
+      flow_ret = GST_FLOW_UNEXPECTED;
+    }
   }
 
   if (flow_ret != GST_FLOW_OK)
