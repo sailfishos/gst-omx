@@ -468,8 +468,9 @@ FillBufferDone (OMX_HANDLETYPE hComponent, OMX_PTR pAppData,
   /* Output buffer contains output now or
    * the port was flushed */
   gst_omx_rec_mutex_recursive_lock (&port->port_lock);
-  GST_DEBUG_OBJECT (comp->parent, "Port %u filled buffer %p (%p)", port->index,
-      buf, buf->omx_buf->pBuffer);
+  GST_DEBUG_OBJECT (comp->parent,
+      "Port %u filled buffer %p (%p) with flags 0x%x", port->index, buf,
+      buf->omx_buf->pBuffer, buf->omx_buf->nFlags);
   buf->used = FALSE;
   g_queue_push_tail (port->pending_buffers, buf);
   g_cond_broadcast (port->port_cond);
