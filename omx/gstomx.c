@@ -1396,8 +1396,11 @@ gst_omx_port_set_flushing (GstOMXPort * port, gboolean flush)
     if (port->port_def.eDir == OMX_DirOutput && port->buffers) {
       GstOMXBuffer *buf;
 
+      GQueue *pending = g_queue_copy (port->pending_buffers);
+      g_queue_clear (port->pending_buffers);
+
       /* Enqueue all buffers for the component to fill */
-      while ((buf = g_queue_pop_head (port->pending_buffers))) {
+      while ((buf = g_queue_pop_head (pending))) {
         if (!buf)
           continue;
 
@@ -1423,6 +1426,8 @@ gst_omx_port_set_flushing (GstOMXPort * port, gboolean flush)
         GST_DEBUG_OBJECT (comp->parent, "Passed buffer %p (%p) to component",
             buf, buf->omx_buf->pBuffer);
       }
+
+      g_queue_free (pending);
     }
   }
 
