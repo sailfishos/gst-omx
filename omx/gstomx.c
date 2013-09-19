@@ -1393,8 +1393,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, gboolean flush)
       goto done;
     }
   } else {
-    if (port->port_def.eDir == OMX_DirOutput && port->buffers
-        && (comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
+    if (port->port_def.eDir == OMX_DirOutput && port->buffers) {
       GstOMXBuffer *buf;
 
       /* Enqueue all buffers for the component to fill */
