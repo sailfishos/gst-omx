@@ -1481,6 +1481,8 @@ gst_omx_resurrect_buffer (void *data, GstNativeBuffer * buffer)
 
   gst_buffer_ref (GST_BUFFER (buffer));
 
+  GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_PUSHED);
+
   gst_omx_port_release_buffer (buf->port, buf);
 
   return TRUE;
@@ -1687,16 +1689,26 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
       gst_omx_rec_mutex_begin_recursion (&port->port_lock);
       tmp = OMX_FreeBuffer (comp->handle, port->index, buf->omx_buf);
 
-      if (buf->android_handle) {
-        /* TODO: We might be pulling the plug here while some other element is still using that buffer. */
-        gst_gralloc_free (comp->gralloc, buf->android_handle);
-      }
+      /* We cannot blindly free the buffers because an application might still be holding the
+         buffer even though this is simply a broken behavior */
 
       if (buf->native_buffer) {
-        /* Reset the callback so we don't get called. */
-        gst_native_buffer_set_finalize_callback (buf->native_buffer, NULL,
-            NULL);
-        gst_buffer_unref (GST_BUFFER (buf->native_buffer));
+        if (GST_BUFFER_FLAG_IS_SET (buf->native_buffer, GST_BUFFER_FLAG_PUSHED)) {
+          gst_native_buffer_set_auto_destroy (buf->native_buffer);
+          buf->native_buffer = NULL;
+          buf->android_handle = NULL;
+        } else {
+          /* Reset the callback so we don't get called. */
+          gst_native_buffer_set_finalize_callback (buf->native_buffer, NULL,
+              NULL);
+          gst_buffer_unref (GST_BUFFER (buf->native_buffer));
+          gst_gralloc_free (comp->gralloc, buf->android_handle);
+          buf->native_buffer = NULL;
+          buf->android_handle = NULL;
+        }
+      } else if (buf->android_handle) {
+        gst_gralloc_free (comp->gralloc, buf->android_handle);
+        buf->android_handle = NULL;
       }
 
       gst_omx_rec_mutex_end_recursion (&port->port_lock);

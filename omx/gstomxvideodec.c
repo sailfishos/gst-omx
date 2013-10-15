@@ -859,6 +859,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         goto invalid_buffer;
       }
 
+      GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_PUSHED);
+
       flow_ret = gst_pad_push (GST_BASE_VIDEO_CODEC_SRC_PAD (self), outbuf);
     } else if (buf->omx_buf->nFilledLen > 0) {
       if (GST_BASE_VIDEO_CODEC (self)->state.bytes_per_picture == 0
@@ -896,6 +898,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         }
       }
 
+      GST_BUFFER_FLAG_SET (frame->src_buffer, GST_BUFFER_FLAG_PUSHED);
       flow_ret =
           gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self),
           frame);

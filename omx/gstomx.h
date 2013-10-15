@@ -32,6 +32,9 @@
 
 G_BEGIN_DECLS
 
+/* Buffer has been pushed to application */
+#define GST_BUFFER_FLAG_PUSHED GST_BUFFER_FLAG_LAST
+
 #define GST_OMX_INIT_STRUCT(st) G_STMT_START { \
   memset ((st), 0, sizeof (*(st))); \
   (st)->nSize = sizeof (*(st)); \
