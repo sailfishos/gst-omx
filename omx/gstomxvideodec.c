@@ -850,7 +850,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
 
       if (!gst_omx_video_dec_fill_buffer (self, buf, outbuf)) {
         gst_buffer_unref (outbuf);
-        gst_omx_port_release_buffer (self->out_port, buf);
+
+        if (!(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
+          /* unreffing a native buffer will cause it to be released. */
+          gst_omx_port_release_buffer (self->out_port, buf);
+        }
+
         goto invalid_buffer;
       }
 
@@ -881,7 +886,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           flow_ret =
               gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER
               (self), frame);
-          gst_omx_port_release_buffer (self->out_port, buf);
+
+          if (!(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
+            /* Only for non-native buffers */
+            gst_omx_port_release_buffer (self->out_port, buf);
+          }
+
           goto invalid_buffer;
         }
       }
