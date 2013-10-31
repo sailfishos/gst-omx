@@ -690,6 +690,7 @@ gst_omc_video_dec_set_src_caps (GstOMXVideoDec * self)
       "framerate", GST_TYPE_FRACTION, state->fps_n, state->fps_d,
       "format", G_TYPE_INT, self->component->android_buffer_usage,
       "pixel-aspect-ratio", GST_TYPE_FRACTION, state->par_n, state->par_d,
+      "orientation-angle", G_TYPE_INT, state->orientation_angle,
       NULL);
 
   gst_caps_set_simple (caps, "interlaced",

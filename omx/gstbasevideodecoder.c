@@ -300,6 +300,8 @@ gst_base_video_decoder_sink_setcaps (GstPad * pad, GstCaps * caps)
     state.par_n = 0;
     state.par_d = 1;
   }
+  state.orientation_angle = 0;
+  gst_structure_get_int (structure, "orientation-angle", &state.orientation_angle);
 
   state.have_interlaced =
       gst_video_format_parse_caps_interlaced (caps, &state.interlaced);
