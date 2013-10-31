@@ -94,6 +94,7 @@ struct _GstVideoState
   int width, height;
   int fps_n, fps_d;
   int par_n, par_d;
+  int orientation_angle;
 
   gboolean have_interlaced;
   gboolean interlaced;
