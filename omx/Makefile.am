@@ -57,7 +57,7 @@ libgstopenmax_la_CFLAGS = \
 	-I$(abs_srcdir)/openmax \
 	$(GST_PLUGINS_BASE_CFLAGS) \
 	$(GST_BASE_CFLAGS) \
-	$(GST_CFLAGS) \
+	$(filter-out -DG_DISABLE_DEPRECATED,$(GST_CFLAGS)) \
 	$(fixbaseclasses) \
 	$(DROID_CFLAGS)
 
