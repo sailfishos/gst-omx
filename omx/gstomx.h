@@ -33,9 +33,6 @@
 
 G_BEGIN_DECLS
 
-/* Buffer has been pushed to application */
-#define GST_BUFFER_FLAG_PUSHED GST_BUFFER_FLAG_LAST
-
 #define GST_OMX_INIT_STRUCT(st) G_STMT_START { \
   memset ((st), 0, sizeof (*(st))); \
   (st)->nSize = sizeof (*(st)); \
@@ -197,6 +194,7 @@ struct _GstOMXPort {
    */
   gint settings_cookie;
   gint configured_settings_cookie;
+  gint resurrection_cookie;
 };
 
 struct _GstOMXComponent {
@@ -219,6 +217,8 @@ struct _GstOMXComponent {
   GQueue messages; /* Queue of GstOMXMessages */
   GMutex *messages_lock;
   GCond *messages_cond;
+
+  GMutex resurrection_lock;
 
   OMX_STATETYPE state;
   /* OMX_StateInvalid if no pending state */
@@ -244,6 +244,7 @@ struct _GstOMXBuffer {
 
   /* Cookie of the settings when this buffer was allocated */
   gint settings_cookie;
+  gint resurrection_cookie;
 
   buffer_handle_t android_handle;
   GstNativeBuffer *native_buffer;

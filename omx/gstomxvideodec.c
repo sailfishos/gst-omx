@@ -712,13 +712,30 @@ gst_omc_video_dec_set_src_caps (GstOMXVideoDec * self)
   return ret;
 }
 
+static GstBuffer *
+gst_omx_video_dec_get_native_buffer (GstOMXVideoDec * self, GstOMXBuffer * buf)
+{
+    GstBuffer *buffer = GST_BUFFER (buf->native_buffer);
+
+    /* gst_omx_port_acquire_buffer increments the reference count,
+     * gst_omx_port_release_buffer decrements it, at this point release won't
+     * be called so the acquire/release reference is decremented here. */
+    gst_buffer_unref (buffer);
+
+    g_mutex_lock (&buf->port->comp->resurrection_lock);
+    buf->resurrection_cookie = buf->port->resurrection_cookie;
+    g_mutex_unlock (&buf->port->comp->resurrection_lock);
+
+    return buffer;
+}
+
 static gboolean
 gst_omx_video_dec_alloc_src_frame (GstOMXVideoDec * self, GstVideoFrame * frame,
     GstOMXBuffer * buf)
 {
   if (self->component->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
-    frame->src_buffer = GST_BUFFER (buf->native_buffer);
-    return TRUE;
+    frame->src_buffer = gst_omx_video_dec_get_native_buffer (self, buf);
+    return GST_FLOW_OK;
   }
 
   return gst_base_video_decoder_alloc_src_frame (GST_BASE_VIDEO_DECODER (self),
@@ -735,7 +752,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
   GstFlowReturn flow_ret = GST_FLOW_OK;
   GstOMXAcquireBufferReturn acq_return;
   GstClockTimeDiff deadline;
-  gboolean is_eos;
+  gboolean is_eos, allocated = FALSE;
 
   klass = GST_OMX_VIDEO_DEC_GET_CLASS (self);
 
@@ -848,7 +865,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       GST_ERROR_OBJECT (self, "No corresponding frame found");
 
       if (port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
-        outbuf = GST_BUFFER (buf->native_buffer);
+        outbuf = gst_omx_video_dec_get_native_buffer (self, buf);
       } else {
         outbuf =
             gst_base_video_decoder_alloc_src_buffer (GST_BASE_VIDEO_DECODER
@@ -866,8 +883,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
         goto invalid_buffer;
       }
 
-      GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_PUSHED);
-
+      allocated = TRUE;
       flow_ret = gst_pad_push (GST_BASE_VIDEO_CODEC_SRC_PAD (self), outbuf);
     } else if (buf->omx_buf->nFilledLen > 0) {
       if (GST_BASE_VIDEO_CODEC (self)->state.bytes_per_picture == 0
@@ -881,6 +897,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
       } else
           if (gst_omx_video_dec_alloc_src_frame (self, frame,
               buf) == GST_FLOW_OK) {
+        allocated = TRUE;
         /* FIXME: This currently happens because of a race condition too.
          * We first need to reconfigure the output port and then the input
          * port if both need reconfiguration.
@@ -902,7 +919,6 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           }
           goto invalid_buffer;
         }
-        GST_BUFFER_FLAG_SET (frame->src_buffer, GST_BUFFER_FLAG_PUSHED);
         flow_ret =
             gst_base_video_decoder_finish_frame (GST_BASE_VIDEO_DECODER (self), frame);
         frame = NULL;
@@ -932,7 +948,9 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
           buf->omx_buf->pBuffer);
     }
 
-    if (!(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
+    /* If a native buffer has been acquired from buf unreffing it will release
+     * buf, if it hasn't we do that now. */
+    if (!allocated || !(port->comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS)) {
       gst_omx_port_release_buffer (port, buf);
     }
 

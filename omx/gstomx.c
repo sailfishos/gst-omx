@@ -673,6 +673,8 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
   comp->messages_lock = g_mutex_new ();
   comp->messages_cond = g_cond_new ();
 
+  g_mutex_init (&comp->resurrection_lock);
+
   g_queue_init (&comp->messages);
   comp->pending_state = OMX_StateInvalid;
   comp->last_error = OMX_ErrorNone;
@@ -749,6 +751,8 @@ gst_omx_component_free (GstOMXComponent * comp)
   gst_omx_core_release (comp->core);
 
   gst_omx_component_flush_messages (comp);
+
+  g_mutex_clear (&comp->resurrection_lock);
 
   g_cond_free (comp->messages_cond);
   g_mutex_free (comp->messages_lock);
@@ -1022,6 +1026,7 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
   port->port_def = port_def;
 
   g_queue_init (&port->pending_buffers);
+  port->resurrection_cookie = 1;
   port->flushing = TRUE;
   port->flushed = FALSE;
   port->settings_changed = FALSE;
@@ -1378,6 +1383,11 @@ retry:
   goto retry;
 
 done:
+  if (_buf && _buf->native_buffer) {
+    gst_buffer_ref (GST_BUFFER (_buf->native_buffer));
+    gst_object_ref (comp->parent);
+  }
+
   g_mutex_unlock (comp->lock);
 
   if (_buf) {
@@ -1396,6 +1406,7 @@ OMX_ERRORTYPE
 gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
 {
   GstOMXComponent *comp;
+  GstNativeBuffer *native_buffer;
   OMX_ERRORTYPE err = OMX_ErrorNone;
 
   g_return_val_if_fail (port != NULL, OMX_ErrorUndefined);
@@ -1408,6 +1419,8 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
 
   GST_DEBUG_OBJECT (comp->parent, "Releasing buffer %p (%p) to port %u",
       buf, buf->omx_buf->pBuffer, port->index);
+
+  native_buffer = buf->native_buffer;
 
   gst_omx_component_handle_messages (comp);
 
@@ -1458,6 +1471,11 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
 done:
   gst_omx_component_handle_messages (comp);
   g_mutex_unlock (comp->lock);
+
+  if (native_buffer) {
+    gst_buffer_unref (GST_BUFFER (native_buffer));
+    gst_object_unref (comp->parent);
+  }
 
   if (err != OMX_ErrorNone)
     gst_omx_component_set_last_error (comp, err);
@@ -1605,6 +1623,9 @@ gst_omx_port_set_flushing (GstOMXPort * port, gboolean flush)
         err = OMX_FillThisBuffer (comp->handle, buf->omx_buf);
 
         if (err != OMX_ErrorNone) {
+          buf->used = FALSE;
+          g_queue_push_tail (&port->pending_buffers, buf);
+
           GST_ERROR_OBJECT (comp->parent,
               "Failed to pass buffer %p (%p) to port %u: %s (0x%08x)", buf,
               buf->omx_buf->pBuffer, port->index,
@@ -1662,17 +1683,41 @@ static gboolean
 gst_omx_resurrect_buffer (void *data, GstNativeBuffer * buffer)
 {
   GstOMXBuffer *buf = (GstOMXBuffer *) data;
+  gboolean resurrect = FALSE;
 
-  GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)", buf,
-      buf->omx_buf->pBuffer);
+  g_mutex_lock (&buf->port->comp->resurrection_lock);
+  resurrect = buf->resurrection_cookie == buf->port->resurrection_cookie;
+  buf->resurrection_cookie = 0;
+  g_mutex_unlock (&buf->port->comp->resurrection_lock);
 
-  gst_buffer_ref (GST_BUFFER (buffer));
+  /* Return buffers with a current resurrection cookie to the decoder, otherwise
+   * the decoder no longer references the buffer so destroy it. */
+  if (resurrect) {
+    GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)", buf,
+        buf->omx_buf->pBuffer);
 
-  GST_BUFFER_FLAG_UNSET (buffer, GST_BUFFER_FLAG_PUSHED);
+    gst_buffer_ref (GST_BUFFER (buffer));
 
-  gst_omx_port_release_buffer (buf->port, buf);
+    /* increment the reference count gst_omx_port_release buffer is going to
+     * decrement. */
+    gst_buffer_ref (GST_BUFFER (buffer));
 
-  return TRUE;
+    gst_omx_port_release_buffer (buf->port, buf);
+  } else {
+      buffer_handle_t *handle;
+      GstGralloc *gralloc;
+
+      GST_DEBUG_OBJECT (buf->port->comp->parent, "destroy buffer %p (%p)", buf,
+          buf->omx_buf);
+
+      gralloc = gst_native_buffer_get_gralloc (buffer);
+      handle = gst_native_buffer_get_handle (buffer);
+      gst_gralloc_free (gralloc, *handle);
+
+    g_slice_free (GstOMXBuffer, buf);
+  }
+
+  return resurrect;
 }
 
 /* NOTE: Must be called while holding comp->lock, uses comp->messages_lock */
@@ -1735,6 +1780,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
     buf->port = port;
     buf->used = FALSE;
     buf->settings_cookie = port->settings_cookie;
+    buf->resurrection_cookie = 0;
     g_ptr_array_add (port->buffers, buf);
 
     if (port->port_def.eDir == OMX_DirOutput
@@ -1764,6 +1810,9 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
 
           gst_native_buffer_set_finalize_callback (buf->native_buffer,
               gst_omx_resurrect_buffer, buf);
+        } else {
+            gst_gralloc_free (comp->gralloc, buf->android_handle);
+            buf->android_handle = NULL;
         }
       }
     } else {
@@ -1773,6 +1822,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
     }
 
     if (err != OMX_ErrorNone) {
+      buf->omx_buf = NULL;
       GST_ERROR_OBJECT (comp->parent,
           "Failed to allocate buffer for port %u: %s (0x%08x)", port->index,
           gst_omx_error_to_string (err), err);
@@ -1873,28 +1923,7 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
           buf->omx_buf->pBuffer);
 
       tmp = OMX_FreeBuffer (comp->handle, port->index, buf->omx_buf);
-
-      /* We cannot blindly free the buffers because an application might still be holding the
-         buffer even though this is simply a broken behavior */
-
-      if (buf->native_buffer) {
-        if (GST_BUFFER_FLAG_IS_SET (buf->native_buffer, GST_BUFFER_FLAG_PUSHED)) {
-          gst_native_buffer_set_auto_destroy (buf->native_buffer);
-          buf->native_buffer = NULL;
-          buf->android_handle = NULL;
-        } else {
-          /* Reset the callback so we don't get called. */
-          gst_native_buffer_set_finalize_callback (buf->native_buffer, NULL,
-              NULL);
-          gst_buffer_unref (GST_BUFFER (buf->native_buffer));
-          gst_gralloc_free (comp->gralloc, buf->android_handle);
-          buf->native_buffer = NULL;
-          buf->android_handle = NULL;
-        }
-      } else if (buf->android_handle) {
-        gst_gralloc_free (comp->gralloc, buf->android_handle);
-        buf->android_handle = NULL;
-      }
+      buf->omx_buf = NULL;
 
       if (tmp != OMX_ErrorNone) {
         GST_ERROR_OBJECT (comp->parent,
@@ -1904,7 +1933,14 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
           err = tmp;
       }
     }
-    g_slice_free (GstOMXBuffer, buf);
+
+    /* Free regular buffers now.  Native buffers are unreffed and will
+     * free the GstOMXBuffer when their ref count reaches zero. */
+    if (buf->native_buffer) {
+        gst_buffer_unref (GST_BUFFER (buf->native_buffer));
+    } else {
+      g_slice_free (GstOMXBuffer, buf);
+    }
   }
   g_queue_clear (&port->pending_buffers);
 #if GLIB_CHECK_VERSION(2,22,0)
@@ -2001,6 +2037,26 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
   if (port->enabled_changed) {
     GST_ERROR_OBJECT (comp->parent, "Port enabled/disabled in the meantime");
     goto done;
+  }
+
+  if (port->buffers) {
+    gint i, n = port->buffers->len;
+    g_mutex_lock (&comp->resurrection_lock);
+    for (i = 0; i < n; i++) {
+      GstOMXBuffer *buf = g_ptr_array_index (port->buffers, i);
+
+      // Return any pushed buffers to the pending queue for cleanup of
+      // their buffer headers.
+      if (buf->resurrection_cookie > 0) {
+        gst_buffer_ref (GST_BUFFER (buf->native_buffer));
+        g_queue_push_tail (&port->pending_buffers, buf);
+      }
+    }
+    // Increment the resurrection cookie, any buffers with the old
+    // cookie will be deleted when their reference count reaches zero
+    // instead of being resurrected as normal.
+    port->resurrection_cookie += 1;
+    g_mutex_unlock (&comp->resurrection_lock);
   }
 
   g_get_current_time (&abstimeout);
