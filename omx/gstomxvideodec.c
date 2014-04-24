@@ -1236,13 +1236,15 @@ gst_omx_video_dec_set_format (GstBaseVideoDecoder * decoder,
   /* Check if the caps change is a real format change or if only irrelevant
    * parts of the caps have changed or nothing at all.
    */
-  is_format_change |= port_def.format.video.nFrameWidth != state->width;
-  is_format_change |= port_def.format.video.nFrameHeight != state->height;
-  is_format_change |= (port_def.format.video.xFramerate == 0
-      && state->fps_n != 0)
-      || (port_def.format.video.xFramerate !=
-      (state->fps_n << 16) / (state->fps_d));
-  is_format_change |= (self->codec_data != state->codec_data);
+  if (!(klass->hacks & GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE)) {
+    is_format_change |= port_def.format.video.nFrameWidth != state->width;
+    is_format_change |= port_def.format.video.nFrameHeight != state->height;
+    is_format_change |= (port_def.format.video.xFramerate == 0
+        && state->fps_n != 0)
+        || (port_def.format.video.xFramerate !=
+        (state->fps_n << 16) / (state->fps_d));
+    is_format_change |= (self->codec_data != state->codec_data);
+  }
   if (klass->is_format_change)
     is_format_change |= klass->is_format_change (self, self->in_port, state);
 

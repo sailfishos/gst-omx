@@ -93,6 +93,10 @@ G_BEGIN_DECLS
  */
 #define GST_OMX_HACK_ANDROID_BUFFERS                                  G_GUINT64_CONSTANT (0x0000000000000200)
 
+/* The component can detect format changes in the bit stream and will
+ * update the output port settings without the input being reconfigured.
+ */
+#define GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE                           G_GUINT64_CONSTANT (0x0000000000000400)
 
 typedef struct _GstOMXCore GstOMXCore;
 typedef struct _GstOMXPort GstOMXPort;

@@ -2453,6 +2453,8 @@ gst_omx_parse_hacks (gchar ** hacks)
       hacks_flags |= GST_OMX_HACK_HYBRIS;
     else if (g_str_equal (*hacks, "android-native-buffers"))
       hacks_flags |= GST_OMX_HACK_ANDROID_BUFFERS;
+    else if (g_str_equal (*hacks, "implicit-format-change"))
+      hacks_flags |= GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE;
     else
       GST_WARNING ("Unknown hack: %s", *hacks);
     hacks++;
