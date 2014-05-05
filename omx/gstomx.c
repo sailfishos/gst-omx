@@ -1319,8 +1319,15 @@ retry:
           "Output port %u needs reconfiguration but has buffers pending",
           port->index);
       _buf = g_queue_pop_head (&port->pending_buffers);
+      if (_buf->settings_cookie == port->settings_cookie) {
+        g_queue_push_head (&port->pending_buffers, _buf);
 
-      ret = GST_OMX_ACQUIRE_BUFFER_OK;
+        ret = GST_OMX_ACQUIRE_BUFFER_RECONFIGURE;
+        port->settings_changed = TRUE;
+      } else {
+        ret = GST_OMX_ACQUIRE_BUFFER_OK;
+        _buf->settings_cookie = port->settings_cookie;
+        }
       goto done;
     }
 
