@@ -18,7 +18,6 @@ libgstopenmax_la_SOURCES = \
 	gstbasevideodecoder.c \
 	gstbasevideoencoder.c \
 	gstbasevideoutils.c \
-	gstomxrecmutex.c \
 	gstomxvc1videodec.c
 
 noinst_HEADERS = \
@@ -39,7 +38,6 @@ noinst_HEADERS = \
 	gstbasevideodecoder.h \
 	gstbasevideoencoder.h \
 	gstbasevideoutils.h \
-	gstomxrecmutex.h \
 	gstomxvc1videodec.h \
 	hybris.h \
 	HardwareAPI.h
