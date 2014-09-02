@@ -962,10 +962,17 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
         &extension);
 
     if (err != OMX_ErrorNone) {
-      GST_ERROR_OBJECT (comp->parent,
-          "Failed to get Android native buffers extension index on port %u: %s (0x%08x)",
-          index, gst_omx_error_to_string (err), err);
-      return NULL;
+      // Try to fall back to old OMX extension
+      err = OMX_GetExtensionIndex (comp->handle,
+          (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers",
+          &extension);
+
+      if (err != OMX_ErrorNone) {
+        GST_ERROR_OBJECT (comp->parent,
+            "Failed to get Android native buffers extension index on port %u: %s (0x%08x)",
+            index, gst_omx_error_to_string (err), err);
+        return NULL;
+      }
     }
 
     GST_OMX_INIT_STRUCT (&param);
