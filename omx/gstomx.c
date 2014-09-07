@@ -961,7 +961,7 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
         &extension);
 
     if (err != OMX_ErrorNone) {
-      // Try to fall back to old OMX extension
+      /* Try to fall back to old OMX extension */
       err = OMX_GetExtensionIndex (comp->handle,
           (OMX_STRING) "OMX.google.android.index.useAndroidNativeBuffer",
           &extension);
@@ -972,6 +972,9 @@ gst_omx_component_add_port (GstOMXComponent * comp, guint32 index)
             index, gst_omx_error_to_string (err), err);
         return NULL;
       }
+
+      comp->use_old_android_extension = TRUE;
+      comp->android_extension = extension;
     }
 
     err = OMX_GetExtensionIndex (comp->handle,
@@ -1812,6 +1815,25 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
           comp->android_buffer_usage, &stride);
       if (!buf->android_handle) {
         err = OMX_ErrorUndefined;
+      } else if (comp->use_old_android_extension) {
+        struct UseAndroidNativeBufferParams param;
+        buf->native_buffer =
+            gst_native_buffer_new (buf->android_handle, comp->gralloc,
+            port->port_def.format.video.nFrameWidth,
+            port->port_def.format.video.nFrameHeight,
+            stride, comp->android_buffer_usage,
+            port->port_def.format.video.eColorFormat);
+
+        gst_native_buffer_set_finalize_callback (buf->native_buffer,
+            gst_omx_resurrect_buffer, buf);
+
+        GST_OMX_INIT_STRUCT (&param);
+        param.nPortIndex = port->index;
+        param.pAppPrivate = buf;
+        param.bufferHeader = &buf->omx_buf;
+        param.nativeBuffer =
+            gst_native_buffer_get_native_buffer (buf->native_buffer);
+        err = OMX_SetParameter (comp->handle, comp->android_extension, &param);
       } else {
         err =
             OMX_UseBuffer (comp->handle, &buf->omx_buf, port->index, buf,

@@ -231,6 +231,8 @@ struct _GstOMXComponent {
 
   GstGralloc *gralloc;
   int android_buffer_usage;
+  gboolean use_old_android_extension;
+  OMX_INDEXTYPE android_extension;
 };
 
 struct _GstOMXBuffer {

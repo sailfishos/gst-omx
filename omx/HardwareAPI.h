@@ -73,16 +73,14 @@ struct StoreMetaDataInBuffersParams {
 // given.  This call will only be performed if a prior call was made with the
 // 'OMX.google.android.index.enableAndroidNativeBuffers' extension index,
 // enabling use of Android native buffers.
-#if 0
 struct UseAndroidNativeBufferParams {
     OMX_U32 nSize;
     OMX_VERSIONTYPE nVersion;
     OMX_U32 nPortIndex;
     OMX_PTR pAppPrivate;
     OMX_BUFFERHEADERTYPE **bufferHeader;
-    const sp<ANativeWindowBuffer>& nativeBuffer;
+    const struct ANativeWindowBuffer *nativeBuffer;
 };
-#endif
 
 // A pointer to this struct is passed to OMX_GetParameter when the extension
 // index for the 'OMX.google.android.index.getAndroidNativeBufferUsage'
