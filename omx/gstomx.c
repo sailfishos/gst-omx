@@ -48,6 +48,9 @@
 #endif
 #include "HardwareAPI.h"
 
+/* TODO: hack. rename this */
+#define GST_OMX_CROP_QDATA "GstDroidCamSrcCropData"
+
 GST_DEBUG_CATEGORY (gstomx_debug);
 #define GST_CAT_DEFAULT gstomx_debug
 
@@ -1747,6 +1750,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
   GstOMXComponent *comp;
   OMX_ERRORTYPE err = OMX_ErrorNone;
   gint i, n;
+  OMX_CONFIG_RECTTYPE rect;
 
   g_assert (!port->buffers || port->buffers->len == 0);
 
@@ -1793,6 +1797,27 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
   if (!port->buffers)
     port->buffers = g_ptr_array_sized_new (n);
 
+  if (port->port_def.eDir == OMX_DirOutput
+      && comp->hacks & GST_OMX_HACK_ANDROID_BUFFERS) {
+
+    /* Let's get the crop rect */
+    GST_OMX_INIT_STRUCT (&rect);
+    rect.nPortIndex = port->index;
+
+    err =
+        gst_omx_component_get_config (comp, OMX_IndexConfigCommonOutputCrop,
+        &rect);
+    if (err != OMX_ErrorNone) {
+      rect.nLeft = 0;
+      rect.nTop = 0;
+      rect.nWidth = port->port_def.format.video.nFrameWidth;
+      rect.nHeight = port->port_def.format.video.nFrameHeight;
+    }
+
+    GST_INFO_OBJECT (comp->parent, "crop rectangle: %dx%d, %dx%d", rect.nLeft,
+        rect.nTop, rect.nWidth, rect.nHeight);
+  }
+
   for (i = 0; i < n; i++) {
     GstOMXBuffer *buf;
 
@@ -1809,12 +1834,18 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
       int width = port->port_def.format.video.nFrameWidth;
       int height = port->port_def.format.video.nFrameHeight;
       int stride = 0;
+      GstStructure *crop = gst_structure_new (GST_OMX_CROP_QDATA,
+          "left", G_TYPE_INT, rect.nLeft,
+          "top", G_TYPE_INT, rect.nTop,
+          "right", G_TYPE_INT, rect.nLeft + rect.nWidth,
+          "bottom", G_TYPE_INT, rect.nTop + rect.nHeight, NULL);
 
       buf->android_handle =
           gst_gralloc_allocate (comp->gralloc, width, height, format,
           comp->android_buffer_usage, &stride);
       if (!buf->android_handle) {
         err = OMX_ErrorUndefined;
+        gst_structure_free (crop);
       } else if (comp->use_old_android_extension) {
         struct UseAndroidNativeBufferParams param;
         buf->native_buffer =
@@ -1823,6 +1854,9 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
             port->port_def.format.video.nFrameHeight,
             stride, comp->android_buffer_usage,
             port->port_def.format.video.eColorFormat);
+
+        gst_buffer_set_qdata (GST_BUFFER (buf->native_buffer),
+            g_quark_from_string (GST_OMX_CROP_QDATA), crop);
 
         gst_native_buffer_set_finalize_callback (buf->native_buffer,
             gst_omx_resurrect_buffer, buf);
@@ -1834,6 +1868,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
         param.nativeBuffer =
             gst_native_buffer_get_native_buffer (buf->native_buffer);
         err = OMX_SetParameter (comp->handle, comp->android_extension, &param);
+        /* TODO: error checking and clean up */
       } else {
         err =
             OMX_UseBuffer (comp->handle, &buf->omx_buf, port->index, buf,
@@ -1847,11 +1882,15 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
               stride, comp->android_buffer_usage,
               port->port_def.format.video.eColorFormat);
 
+          gst_buffer_set_qdata (GST_BUFFER (buf->native_buffer),
+              g_quark_from_string (GST_OMX_CROP_QDATA), crop);
+
           gst_native_buffer_set_finalize_callback (buf->native_buffer,
               gst_omx_resurrect_buffer, buf);
         } else {
           gst_gralloc_free (comp->gralloc, buf->android_handle);
           buf->android_handle = NULL;
+          gst_structure_free (crop);
         }
       }
     } else {
