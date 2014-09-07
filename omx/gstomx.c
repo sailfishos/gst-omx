@@ -879,8 +879,7 @@ gst_omx_component_get_state (GstOMXComponent * comp, GstClockTime timeout)
       signalled = TRUE;
     } else {
       signalled =
-          g_cond_timed_wait (comp->messages_cond, comp->messages_lock,
-          timeval);
+          g_cond_timed_wait (comp->messages_cond, comp->messages_lock, timeval);
     }
     g_mutex_unlock (comp->messages_lock);
     g_mutex_lock (comp->lock);
@@ -1350,7 +1349,7 @@ retry:
       } else {
         ret = GST_OMX_ACQUIRE_BUFFER_OK;
         _buf->settings_cookie = port->settings_cookie;
-        }
+      }
       goto done;
     }
 
@@ -1711,8 +1710,8 @@ gst_omx_resurrect_buffer (void *data, GstNativeBuffer * buffer)
   /* Return buffers with a current resurrection cookie to the decoder, otherwise
    * the decoder no longer references the buffer so destroy it. */
   if (resurrect) {
-    GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)", buf,
-        buf->omx_buf->pBuffer);
+    GST_DEBUG_OBJECT (buf->port->comp->parent, "resurrecting buffer %p (%p)",
+        buf, buf->omx_buf->pBuffer);
 
     gst_buffer_ref (GST_BUFFER (buffer));
 
@@ -1722,15 +1721,15 @@ gst_omx_resurrect_buffer (void *data, GstNativeBuffer * buffer)
 
     gst_omx_port_release_buffer (buf->port, buf);
   } else {
-      buffer_handle_t *handle;
-      GstGralloc *gralloc;
+    buffer_handle_t *handle;
+    GstGralloc *gralloc;
 
-      GST_DEBUG_OBJECT (buf->port->comp->parent, "destroy buffer %p (%p)", buf,
-          buf->omx_buf);
+    GST_DEBUG_OBJECT (buf->port->comp->parent, "destroy buffer %p (%p)", buf,
+        buf->omx_buf);
 
-      gralloc = gst_native_buffer_get_gralloc (buffer);
-      handle = gst_native_buffer_get_handle (buffer);
-      gst_gralloc_free (gralloc, *handle);
+    gralloc = gst_native_buffer_get_gralloc (buffer);
+    handle = gst_native_buffer_get_handle (buffer);
+    gst_gralloc_free (gralloc, *handle);
 
     g_slice_free (GstOMXBuffer, buf);
   }
@@ -1829,8 +1828,8 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port)
           gst_native_buffer_set_finalize_callback (buf->native_buffer,
               gst_omx_resurrect_buffer, buf);
         } else {
-            gst_gralloc_free (comp->gralloc, buf->android_handle);
-            buf->android_handle = NULL;
+          gst_gralloc_free (comp->gralloc, buf->android_handle);
+          buf->android_handle = NULL;
         }
       }
     } else {
@@ -1955,7 +1954,7 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
     /* Free regular buffers now.  Native buffers are unreffed and will
      * free the GstOMXBuffer when their ref count reaches zero. */
     if (buf->native_buffer) {
-        gst_buffer_unref (GST_BUFFER (buf->native_buffer));
+      gst_buffer_unref (GST_BUFFER (buf->native_buffer));
     } else {
       g_slice_free (GstOMXBuffer, buf);
     }
@@ -2095,8 +2094,7 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
       signalled = TRUE;
     else
       signalled =
-          g_cond_timed_wait (comp->messages_cond, comp->messages_lock,
-          timeval);
+          g_cond_timed_wait (comp->messages_cond, comp->messages_lock, timeval);
     g_mutex_unlock (comp->messages_lock);
     g_mutex_lock (comp->lock);
     if (signalled)
@@ -2146,8 +2144,7 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
       signalled = TRUE;
     else
       signalled =
-          g_cond_timed_wait (comp->messages_cond, comp->messages_lock,
-          timeval);
+          g_cond_timed_wait (comp->messages_cond, comp->messages_lock, timeval);
     g_mutex_unlock (comp->messages_lock);
     g_mutex_lock (comp->lock);
     if (signalled)
