@@ -1,0 +1,289 @@
+From 292da770bbe49cbfa40e190e89cb93235ca549e8 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Thu, 12 Jun 2014 18:19:28 +1000
+Subject: [PATCH 09/11] [gst-omx] Enable the storeMetaDataInBuffer encoder
+ option. Contributes to JB#20097
+
+Only if the stream source selects caps with the memory:AndroidMetadata feature.
+---
+ omx/gstomx.c         |  6 +++++
+ omx/gstomx.h         |  1 +
+ omx/gstomxandroid.c  | 36 +++++++++++++++++++++++--
+ omx/gstomxandroid.h  |  3 +++
+ omx/gstomxvideoenc.c | 74 +++++++++++++++++++++++++++++++++++++++++++++-------
+ omx/gstomxvideoenc.h |  3 +++
+ 6 files changed, 111 insertions(+), 12 deletions(-)
+
+diff --git a/omx/gstomx.c b/omx/gstomx.c
+index 89eaeaf..a506217 100644
+--- a/omx/gstomx.c
++++ b/omx/gstomx.c
+@@ -523,6 +523,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
+           break;
+         }
+ 
++        if (buf->input_buffer) {
++          gst_buffer_unref (buf->input_buffer);
++          buf->input_buffer = NULL;
++        }
++
+         g_queue_push_tail (&port->pending_buffers, buf);
+ 
+         break;
+@@ -1835,6 +1840,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port, GstBufferPool *pool,
+     buf = g_slice_new0 (GstOMXBuffer);
+     buf->port = port;
+     buf->pool_buffer = NULL;
++    buf->input_buffer = NULL;
+     buf->used = FALSE;
+     buf->settings_cookie = port->settings_cookie;
+     g_ptr_array_add (port->buffers, buf);
+diff --git a/omx/gstomx.h b/omx/gstomx.h
+index 8306808..b6e6af5 100644
+--- a/omx/gstomx.h
++++ b/omx/gstomx.h
+@@ -303,6 +303,7 @@ struct _GstOMXBuffer {
+   GstOMXPort *port;
+   OMX_BUFFERHEADERTYPE *omx_buf;
+   GstBuffer *pool_buffer;
++  GstBuffer *input_buffer;
+ 
+   /* TRUE if the buffer is used by the port, i.e.
+    * between {Empty,Fill}ThisBuffer and the callback
+diff --git a/omx/gstomxandroid.c b/omx/gstomxandroid.c
+index 323fe3e..7220b35 100644
+--- a/omx/gstomxandroid.c
++++ b/omx/gstomxandroid.c
+@@ -38,7 +38,7 @@ gst_omx_android_enable_native_buffers (GstOMXComponent * comp,
+       (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers2",
+       &extension);
+   if (err != OMX_ErrorNone)
+-    return err;
++    return enable ? err : OMX_ErrorNone;
+ 
+   GST_OMX_INIT_STRUCT (&params);
+   params.nPortIndex = port_index;
+@@ -59,7 +59,7 @@ gst_omx_android_store_metadata_in_buffers (GstOMXComponent * comp,
+       (OMX_STRING) "OMX.google.android.index.storeMetaDataInBuffers",
+       &extension);
+   if (err != OMX_ErrorNone)
+-    return err;
++    return store_metadata ? err : OMX_ErrorNone;
+ 
+   GST_OMX_INIT_STRUCT (&params);
+   params.nPortIndex = port_index;
+@@ -92,3 +92,35 @@ gst_omx_android_get_native_buffer_usage (GstOMXComponent * comp,
+     return 0;
+   }
+ }
++
++GstCaps *
++gst_omx_android_append_metadata_feature (GstOMXComponent * comp,
++    GstCaps *caps)
++{
++  OMX_ERRORTYPE err;
++  OMX_INDEXTYPE extension;
++  GstCaps *featureCaps;
++  GstCapsFeatures *features;
++  guint i, n;
++
++  if (gst_caps_is_empty (caps))
++    return caps;
++
++  err = OMX_GetExtensionIndex (comp->handle,
++      (OMX_STRING) "OMX.google.android.index.storeMetaDataInBuffers",
++      &extension);
++  if (err != OMX_ErrorNone)
++    return caps;
++
++  featureCaps = gst_caps_copy (caps);
++  features = gst_caps_features_from_string ("memory:AndroidMetadata");
++
++  gst_caps_set_features (featureCaps, 0, features);
++
++  n = gst_caps_get_size (featureCaps);
++  for (i = 1; i < n; ++i) {
++    gst_caps_set_features (featureCaps, i, gst_caps_features_copy (features));
++  }
++
++  return gst_caps_merge (caps, featureCaps);
++}
+diff --git a/omx/gstomxandroid.h b/omx/gstomxandroid.h
+index f373c5d..e66b22d 100644
+--- a/omx/gstomxandroid.h
++++ b/omx/gstomxandroid.h
+@@ -34,6 +34,9 @@ OMX_ERRORTYPE gst_omx_android_store_metadata_in_buffers (GstOMXComponent * comp,
+ OMX_U32 gst_omx_android_get_native_buffer_usage (GstOMXComponent * comp,
+     OMX_U32 port_index);
+ 
++GstCaps *gst_omx_android_append_metadata_feature (GstOMXComponent * comp,
++    GstCaps *caps);
++
+ G_END_DECLS
+ 
+ #endif
+diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
+index 8f6184f..c75e082 100644
+--- a/omx/gstomxvideoenc.c
++++ b/omx/gstomxvideoenc.c
+@@ -34,6 +34,10 @@
+ #include <OMX_Index.h>
+ #endif
+ 
++#ifdef HAVE_DROID
++#include "gstomxandroid.h"
++#endif
++
+ GST_DEBUG_CATEGORY_STATIC (gst_omx_video_enc_debug_category);
+ #define GST_CAT_DEFAULT gst_omx_video_enc_debug_category
+ 
+@@ -187,7 +191,7 @@ gst_omx_video_enc_class_init (GstOMXVideoEncClass * klass)
+   video_encoder_class->getcaps = GST_DEBUG_FUNCPTR (gst_omx_video_enc_getcaps);
+ 
+   klass->cdata.type = GST_OMX_COMPONENT_TYPE_FILTER;
+-  klass->cdata.default_sink_template_caps = "video/x-raw, "
++  klass->cdata.default_sink_template_caps = "video/x-raw(ANY), "
+       "width = " GST_VIDEO_SIZE_RANGE ", "
+       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
+ 
+@@ -220,6 +224,7 @@ gst_omx_video_enc_open (GstVideoEncoder * encoder)
+       klass->cdata.component_name, klass->cdata.component_role,
+       klass->cdata.hacks);
+   self->started = FALSE;
++  self->metadata_buffers = FALSE;
+ 
+   if (!self->enc)
+     return FALSE;
+@@ -950,6 +955,9 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+   OMX_PARAM_PORTDEFINITIONTYPE port_def;
+   GstVideoInfo *info = &state->info;
+   GList *negotiation_map = NULL, *l;
++#ifdef HAVE_DROID
++  GstCapsFeatures *features = gst_caps_get_features (state->caps, 0);
++#endif
+ 
+   self = GST_OMX_VIDEO_ENC (encoder);
+   klass = GST_OMX_VIDEO_ENC_GET_CLASS (encoder);
+@@ -1162,6 +1170,29 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+           gst_omx_error_to_string (err), err);
+   }
+ 
++#ifdef HAVE_DROID
++  self->metadata_buffers = FALSE;
++  if (features && gst_caps_features_contains (features,
++      "memory:AndroidMetadata")) {
++      OMX_ERRORTYPE err = gst_omx_android_store_metadata_in_buffers (self->enc,
++          self->enc_in_port->index, TRUE);
++
++      GST_DEBUG_OBJECT (self, "Enabling android meta-data buffers");
++
++      if (err == OMX_ErrorNone) {
++        self->metadata_buffers = TRUE;
++      } else {
++        GST_ERROR_OBJECT (self,
++            "Failed to enable android meta-data buffers: %s (0x%08x)",
++            gst_omx_error_to_string (err), err);
++        return FALSE;
++      }
++  } else {
++    gst_omx_android_store_metadata_in_buffers (self->enc,
++        self->enc_in_port->index, FALSE);
++  }
++#endif
++
+   GST_DEBUG_OBJECT (self, "Enabling component");
+   if (needs_disable) {
+     if (gst_omx_port_set_enabled (self->enc_in_port, TRUE) != OMX_ErrorNone)
+@@ -1485,7 +1516,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
+   GstOMXAcquireBufferReturn acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
+   GstOMXVideoEnc *self;
+   GstOMXPort *port;
+-  GstOMXBuffer *buf;
++  GstOMXBuffer *buf = NULL;
+   OMX_ERRORTYPE err;
+ 
+   self = GST_OMX_VIDEO_ENC (encoder);
+@@ -1614,6 +1645,13 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
+             gst_omx_error_to_string (err), err);
+     }
+ 
++    /* Keep a reference to meta-data buffers until after the encoder has
++       finished with the buffer since hasn't taken a copy of the actual data */
++    if (self->metadata_buffers) {
++      buf->input_buffer = frame->input_buffer;
++      gst_buffer_ref (buf->input_buffer);
++    }
++
+     /* Copy the buffer content in chunks of size as requested
+      * by the port */
+     if (!gst_omx_video_enc_fill_buffer (self, frame->input_buffer, buf)) {
+@@ -1696,6 +1734,10 @@ buffer_fill_error:
+   }
+ release_error:
+   {
++    if (buf && buf->input_buffer) {
++      gst_buffer_unref (buf->input_buffer);
++      buf->input_buffer = NULL;
++    }
+     gst_video_codec_frame_unref (frame);
+     GST_ELEMENT_ERROR (self, LIBRARY, SETTINGS, (NULL),
+         ("Failed to relase input buffer to component: %s (0x%08x)",
+@@ -1795,7 +1837,7 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
+ {
+   GstOMXVideoEnc *self = GST_OMX_VIDEO_ENC (encoder);
+   GList *negotiation_map = NULL;
+-  GstCaps *comp_supported_caps;
++  GstCaps *comp_supported_caps, *ret;
+ 
+   if (!self->enc)
+     return gst_video_encoder_proxy_getcaps (encoder, NULL, filter);
+@@ -1808,13 +1850,25 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
+       (GDestroyNotify) gst_omx_video_negotiation_map_free);
+ 
+   if (!gst_caps_is_empty (comp_supported_caps)) {
+-    GstCaps *ret =
+-        gst_video_encoder_proxy_getcaps (encoder, comp_supported_caps, filter);
+-
+-    gst_caps_unref (comp_supported_caps);
+-    return ret;
++    ret = gst_video_encoder_proxy_getcaps (encoder,
++        comp_supported_caps, NULL);
+   } else {
+-    gst_caps_unref (comp_supported_caps);
+-    return gst_video_encoder_proxy_getcaps (encoder, NULL, filter);
++    ret = gst_video_encoder_proxy_getcaps (encoder, NULL, NULL);
++  }
++
++#ifdef HAVE_DROID
++  ret = gst_omx_android_append_metadata_feature (self->enc, ret);
++#endif
++
++  if (filter) {
++    gst_caps_replace (&ret, gst_caps_intersect (ret, filter));
+   }
++
++  gst_caps_unref (comp_supported_caps);
++
++  GST_DEBUG_OBJECT (self, "encoder proxy caps %"GST_PTR_FORMAT, ret);
++
++  GST_DEBUG_OBJECT (self, "encoder supported caps %"GST_PTR_FORMAT, ret);
++
++  return ret;
+ }
+diff --git a/omx/gstomxvideoenc.h b/omx/gstomxvideoenc.h
+index 176ea99..53e3b55 100644
+--- a/omx/gstomxvideoenc.h
++++ b/omx/gstomxvideoenc.h
+@@ -67,6 +67,9 @@ struct _GstOMXVideoEnc
+   /* TRUE if EOS buffers shouldn't be forwarded */
+   gboolean draining;
+ 
++  /* TRUE if input buffers contain meta-data linking to actual frame data */
++  gboolean metadata_buffers;
++
+   /* properties */
+   guint32 control_rate;
+   guint32 target_bitrate;
+-- 
+1.8.3-rc3
+

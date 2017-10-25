@@ -1,0 +1,291 @@
+From 7ec68cb0533ad8d5dd9bee826761170d790b37fe Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Tue, 29 Jul 2014 16:41:45 +1000
+Subject: [PATCH 05/11] [gst-omx] Fix endless loop on reconfiguration.
+ Contributes to JB#17654
+
+Reconfiguration of the output port waits for the pending_buffers queue
+to be emptied but in a flushing, disabled, or configuration state the
+queue will instead be filled with unused buffers, so the decoder loop
+will be forever pulling buffers from the queue and pushing them back.
+Resolve this by only placing filled buffers in pending_buffers queue
+of the output port.
+---
+ omx/gstomx.c         | 65 ++++++++++++++++++++++++++++++++++++----------------
+ omx/gstomx.h         |  2 ++
+ omx/gstomxaudiodec.c |  5 ++++
+ omx/gstomxaudioenc.c |  4 ++++
+ omx/gstomxvideodec.c |  5 ++++
+ omx/gstomxvideoenc.c |  5 ++++
+ 6 files changed, 66 insertions(+), 20 deletions(-)
+
+diff --git a/omx/gstomx.c b/omx/gstomx.c
+index 08c1d50..4edc463 100644
+--- a/omx/gstomx.c
++++ b/omx/gstomx.c
+@@ -469,6 +469,12 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
+         }
+ 
+         buf->used = FALSE;
++        --port->num_used_buffers;
++
++        if (port->port_def.eDir == OMX_DirOutput
++            && (port->flushing || port->disabled_pending)) {
++          break;
++        }
+ 
+         g_queue_push_tail (&port->pending_buffers, buf);
+ 
+@@ -857,6 +863,7 @@ gst_omx_component_free (GstOMXComponent * comp)
+       gst_omx_port_deallocate_buffers (port);
+       g_assert (port->buffers == NULL);
+       g_assert (g_queue_get_length (&port->pending_buffers) == 0);
++      g_assert (port->num_used_buffers == 0);
+ 
+       g_slice_free (GstOMXPort, port);
+     }
+@@ -1521,7 +1528,9 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
+   if ((err = comp->last_error) != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (comp->parent, "Component %s is in error state: %s "
+         "(0x%08x)", comp->name, gst_omx_error_to_string (err), err);
+-    g_queue_push_tail (&port->pending_buffers, buf);
++    if (port->port_def.eDir == OMX_DirInput) {
++      g_queue_push_tail (&port->pending_buffers, buf);
++    }
+     gst_omx_component_send_message (comp, NULL);
+     goto done;
+   }
+@@ -1530,7 +1539,9 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
+     GST_DEBUG_OBJECT (comp->parent,
+         "%s port %u is flushing or disabled, not releasing " "buffer",
+         comp->name, port->index);
+-    g_queue_push_tail (&port->pending_buffers, buf);
++    if (port->port_def.eDir == OMX_DirInput) {
++      g_queue_push_tail (&port->pending_buffers, buf);
++    }
+     gst_omx_component_send_message (comp, NULL);
+     goto done;
+   }
+@@ -1540,6 +1551,7 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
+   /* FIXME: What if the settings cookies don't match? */
+ 
+   buf->used = TRUE;
++  ++port->num_used_buffers;
+ 
+   if (port->port_def.eDir == OMX_DirInput) {
+     err = OMX_EmptyThisBuffer (comp->handle, buf->omx_buf);
+@@ -1593,6 +1605,10 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
+     gboolean signalled;
+     OMX_ERRORTYPE last_error;
+ 
++    if (port->port_def.eDir == OMX_DirOutput) {
++      g_queue_clear (&port->pending_buffers);
++    }
++
+     gst_omx_component_send_message (comp, NULL);
+ 
+     /* Now flush the port */
+@@ -1621,9 +1637,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
+     }
+ 
+     if (timeout == 0) {
+-      if (!port->flushed || (port->buffers
+-              && port->buffers->len >
+-              g_queue_get_length (&port->pending_buffers)))
++      if (!port->flushed || port->num_used_buffers > 0)
+         err = OMX_ErrorTimeout;
+       goto done;
+     }
+@@ -1635,8 +1649,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
+     last_error = OMX_ErrorNone;
+     gst_omx_component_handle_messages (comp);
+     while (signalled && last_error == OMX_ErrorNone && !port->flushed
+-        && port->buffers
+-        && port->buffers->len > g_queue_get_length (&port->pending_buffers)) {
++        && port->num_used_buffers > 0) {
+       signalled = gst_omx_component_wait_message (comp, timeout);
+       if (signalled)
+         gst_omx_component_handle_messages (comp);
+@@ -1712,6 +1725,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+   const GList *l;
+ 
+   g_assert (!port->buffers || port->buffers->len == 0);
++  g_assert (port->num_used_buffers == 0);
+ 
+   g_return_val_if_fail (!port->tunneled, OMX_ErrorBadParameter);
+ 
+@@ -1786,8 +1800,10 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+ 
+     g_assert (buf->omx_buf->pAppPrivate == buf);
+ 
+-    /* In the beginning all buffers are not owned by the component */
+-    g_queue_push_tail (&port->pending_buffers, buf);
++    if (port->port_def.eDir == OMX_DirInput) {
++      /* In the beginning all buffers are not owned by the component */
++      g_queue_push_tail (&port->pending_buffers, buf);
++    }
+     if (buffers || images)
+       l = l->next;
+   }
+@@ -1986,15 +2002,20 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
+   else
+     port->disabled_pending = TRUE;
+ 
+-  if (enabled)
++  if (enabled) {
+     err =
+         OMX_SendCommand (comp->handle, OMX_CommandPortEnable, port->index,
+         NULL);
+-  else
++  } else {
+     err =
+         OMX_SendCommand (comp->handle, OMX_CommandPortDisable,
+         port->index, NULL);
+ 
++    if (port->port_def.eDir == OMX_DirOutput) {
++      g_queue_clear (&port->pending_buffers);
++    }
++  }
++
+   if (err != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (comp->parent,
+         "Failed to send enable/disable command to %s port %u: %s (0x%08x)",
+@@ -2043,9 +2064,7 @@ gst_omx_port_wait_buffers_released_unlocked (GstOMXPort * port,
+       "buffers", comp->name, port->index);
+ 
+   if (timeout == 0) {
+-    if (!port->flushed || (port->buffers
+-            && port->buffers->len >
+-            g_queue_get_length (&port->pending_buffers)))
++    if (!port->flushed || port->num_used_buffers > 0)
+       err = OMX_ErrorTimeout;
+     goto done;
+   }
+@@ -2054,9 +2073,8 @@ gst_omx_port_wait_buffers_released_unlocked (GstOMXPort * port,
+   signalled = TRUE;
+   last_error = OMX_ErrorNone;
+   gst_omx_component_handle_messages (comp);
+-  while (signalled && last_error == OMX_ErrorNone && (port->buffers
+-          && port->buffers->len >
+-          g_queue_get_length (&port->pending_buffers))) {
++  while (signalled && last_error == OMX_ErrorNone
++      && port->num_used_buffers > 0) {
+     signalled = gst_omx_component_wait_message (comp, timeout);
+     if (signalled)
+       gst_omx_component_handle_messages (comp);
+@@ -2124,7 +2142,6 @@ gst_omx_port_populate_unlocked (GstOMXPort * port)
+ {
+   GstOMXComponent *comp;
+   OMX_ERRORTYPE err = OMX_ErrorNone;
+-  GstOMXBuffer *buf;
+ 
+   g_return_val_if_fail (port != NULL, OMX_ErrorUndefined);
+ 
+@@ -2150,7 +2167,10 @@ gst_omx_port_populate_unlocked (GstOMXPort * port)
+ 
+   if (port->port_def.eDir == OMX_DirOutput && port->buffers && !port->tunneled) {
+     /* Enqueue all buffers for the component to fill */
+-    while ((buf = g_queue_pop_head (&port->pending_buffers))) {
++
++    guint i, n = port->buffers->len;
++    for (i = 0; i < n; i++) {
++      GstOMXBuffer *buf = g_ptr_array_index (port->buffers, i);
+       g_assert (!buf->used);
+ 
+       /* Reset all flags, some implementations don't
+@@ -2158,10 +2178,15 @@ gst_omx_port_populate_unlocked (GstOMXPort * port)
+        * valid anymore after the buffer was consumed
+        */
+       buf->omx_buf->nFlags = 0;
++      buf->omx_buf->nFilledLen = 0;
++      buf->omx_buf->nOffset = 0;
+ 
+       err = OMX_FillThisBuffer (comp->handle, buf->omx_buf);
+ 
+-      if (err != OMX_ErrorNone) {
++      if (err == OMX_ErrorNone) {
++        buf->used = TRUE;
++        ++port->num_used_buffers;
++      } else {
+         GST_ERROR_OBJECT (comp->parent,
+             "Failed to pass buffer %p (%p) to %s port %u: %s (0x%08x)", buf,
+             buf->omx_buf->pBuffer, comp->name, port->index,
+diff --git a/omx/gstomx.h b/omx/gstomx.h
+index b9659f6..9d5882c 100644
+--- a/omx/gstomx.h
++++ b/omx/gstomx.h
+@@ -251,6 +251,8 @@ struct _GstOMXPort {
+   gboolean disabled_pending; /* was done until it took effect */
+   gboolean eos; /* TRUE after a buffer with EOS flag was received */
+ 
++  gint num_used_buffers;
++
+   /* Increased whenever the settings of these port change.
+    * If settings_cookie != configured_settings_cookie
+    * the port has to be reconfigured.
+diff --git a/omx/gstomxaudiodec.c b/omx/gstomxaudiodec.c
+index 8b8e121..f710251 100644
+--- a/omx/gstomxaudiodec.c
++++ b/omx/gstomxaudiodec.c
+@@ -961,6 +961,11 @@ gst_omx_audio_dec_set_format (GstAudioDecoder * decoder, GstCaps * caps)
+   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
+   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
+ 
++  if ((klass->cdata.hacks & GST_OMX_HACK_NO_DISABLE_OUTPORT)
++      && gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone) {
++    return FALSE;
++  }
++
+   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
+         gst_omx_component_get_last_error_string (self->dec),
+diff --git a/omx/gstomxaudioenc.c b/omx/gstomxaudioenc.c
+index e92c21e..d1708e5 100644
+--- a/omx/gstomxaudioenc.c
++++ b/omx/gstomxaudioenc.c
+@@ -866,6 +866,10 @@ gst_omx_audio_enc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
+   gst_omx_port_set_flushing (self->enc_in_port, 5 * GST_SECOND, FALSE);
+   gst_omx_port_set_flushing (self->enc_out_port, 5 * GST_SECOND, FALSE);
+ 
++  if ((klass->cdata.hacks & GST_OMX_HACK_NO_DISABLE_OUTPORT)
++      && gst_omx_port_populate (self->enc_out_port) != OMX_ErrorNone) {
++    return FALSE;
++  }
+   if (gst_omx_component_get_last_error (self->enc) != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
+         gst_omx_component_get_last_error_string (self->enc),
+diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
+index a7646e3..e607ed8 100644
+--- a/omx/gstomxvideodec.c
++++ b/omx/gstomxvideodec.c
+@@ -2063,6 +2063,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
+   gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
+   gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
+ 
++  if ((klass->cdata.hacks & GST_OMX_HACK_NO_DISABLE_OUTPORT)
++      && gst_omx_port_populate (self->dec_out_port) != OMX_ErrorNone) {
++    return FALSE;
++  }
++
+   if (gst_omx_component_get_last_error (self->dec) != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
+         gst_omx_component_get_last_error_string (self->dec),
+diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
+index fb5a1e0..3b4e5c0 100644
+--- a/omx/gstomxvideoenc.c
++++ b/omx/gstomxvideoenc.c
+@@ -1231,6 +1231,11 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+   gst_omx_port_set_flushing (self->enc_in_port, 5 * GST_SECOND, FALSE);
+   gst_omx_port_set_flushing (self->enc_out_port, 5 * GST_SECOND, FALSE);
+ 
++  if ((klass->cdata.hacks & GST_OMX_HACK_NO_DISABLE_OUTPORT)
++      && gst_omx_port_populate (self->enc_out_port) != OMX_ErrorNone) {
++    return FALSE;
++  }
++
+   if (gst_omx_component_get_last_error (self->enc) != OMX_ErrorNone) {
+     GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
+         gst_omx_component_get_last_error_string (self->enc),
+-- 
+1.8.3-rc3
+

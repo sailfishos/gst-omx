@@ -1,0 +1,56 @@
+From cad4c82f144892d92f9cc2bac9d5fa71a6f09d5b Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Thu, 29 May 2014 02:09:20 +0000
+Subject: [PATCH 03/11] [gst-omx] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
+ map. Contributes to JB#19560
+
+---
+ omx/gstomxvideo.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/omx/gstomxvideo.c b/omx/gstomxvideo.c
+index 8a42c71..4e1ea26 100644
+--- a/omx/gstomxvideo.c
++++ b/omx/gstomxvideo.c
+@@ -31,12 +31,16 @@
+ GST_DEBUG_CATEGORY (gst_omx_video_debug_category);
+ #define GST_CAT_DEFAULT gst_omx_video_debug_category
+ 
++enum {
++  QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03
++};
++
+ GstVideoFormat
+-gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
++gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE color_format)
+ {
+   GstVideoFormat format;
+ 
+-  switch (omx_colorformat) {
++  switch ((gint) color_format) {
+     case OMX_COLOR_FormatL8:
+       format = GST_VIDEO_FORMAT_GRAY8;
+       break;
+@@ -79,7 +83,10 @@ gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
+     case OMX_COLOR_Format24bitBGR888:
+       format = GST_VIDEO_FORMAT_BGR;
+       break;
+-    default:
++    case QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka:
++      format = GST_VIDEO_FORMAT_NV12_64Z32;
++      break;
++    default:     
+       format = GST_VIDEO_FORMAT_UNKNOWN;
+       break;
+   }
+@@ -109,6 +116,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
+ 
+   old_index = -1;
+   do {
++    GstVideoFormat format;
+     err =
+         gst_omx_component_get_parameter (comp,
+         OMX_IndexParamVideoPortFormat, &param);
+-- 
+1.8.3-rc3
+

@@ -1,0 +1,32 @@
+From 03d926317b349006af36645e59ebb427c1f4849e Mon Sep 17 00:00:00 2001
+From: Mohammed Hassan <mohammed.hassan@jollamobile.com>
+Date: Thu, 20 Jun 2013 16:21:55 +0300
+Subject: [PATCH 02/11] Error out if encoder doesn't accept our color format
+
+Not sure this test will ever work but at least it gets ignored on nexus4
+---
+ omx/gstomxvideoenc.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
+index bfad2f3..fb5a1e0 100644
+--- a/omx/gstomxvideoenc.c
++++ b/omx/gstomxvideoenc.c
+@@ -1127,6 +1127,14 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+   }
+ #endif // USE_OMX_TARGET_RPI
+ 
++  /* qualcomm encoders on Nexus 4 are known to not accept any other color format but the one it supports
++     yet it simply logs a warning so this check will not work :| */
++  if (port_def.format.video.eColorFormat !=
++      self->enc_in_port->port_def.format.video.eColorFormat) {
++    GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
++    return FALSE;
++  }
++
+   if (klass->set_format) {
+     if (!klass->set_format (self, self->enc_in_port, state)) {
+       GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
+-- 
+1.8.3-rc3
+

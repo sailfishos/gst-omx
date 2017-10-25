@@ -1,0 +1,407 @@
+From 85a9cc01c454805070cbcf9edc53b90cd98affbc Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Thu, 24 Jul 2014 23:52:10 +0000
+Subject: [PATCH 01/11] Enable hybris support (squashed)
+
+---
+ configure.ac      |  19 +++++++--
+ omx/HardwareAPI.h | 116 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ omx/Makefile.am   |   4 +-
+ omx/gstomx.c      | 101 ++++++++++++++++++++++++++++++++++++++++++++++-
+ omx/gstomx.h      |  14 +++++++
+ omx/hybris.h      |  25 ++++++++++++
+ 6 files changed, 274 insertions(+), 5 deletions(-)
+ create mode 100644 omx/HardwareAPI.h
+ create mode 100644 omx/hybris.h
+
+diff --git a/configure.ac b/configure.ac
+index b1ef5fa..9c21eb4 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -162,6 +162,15 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_API_VERSION`"
+ AC_SUBST(GLIB_PREFIX)
+ AC_SUBST(GST_PREFIX)
+ 
++AC_CHECK_LIB(hybris-common, android_dlopen,
++  [
++    AC_DEFINE(HAVE_HYBRIS, 1, [libhybris support is available])
++    HAVE_HYBRIS=yes
++  ], [
++    HAVE_HYBRIS=no
++  ]
++)
++
+ AC_ARG_WITH([omx-header-path],
+             AS_HELP_STRING([--with-omx-header-path],[path of external OpenMAX IL header files]),
+         [omx_header_path="$withval"], [omx_header_path="none"])
+@@ -221,7 +230,7 @@ AC_ARG_ENABLE(Bsymbolic,
+                LDFLAGS="${SAVED_LDFLAGS}" LIBS="${SAVED_LIBS}"])
+ 
+ AC_ARG_WITH([omx-target],
+-        AS_HELP_STRING([--with-omx-target],[Use this OpenMAX IL target (generic, bellagio, rpi)]),
++        AS_HELP_STRING([--with-omx-target],[Use this OpenMAX IL target (generic, bellagio, rpi, hybris)]),
+         [ac_cv_omx_target="$withval"], [ac_cv_omx_target="none"])
+ 
+ ac_cv_omx_target_struct_packing="none"
+@@ -238,13 +247,17 @@ case "${ac_cv_omx_target}" in
+   bellagio)
+     AC_DEFINE(USE_OMX_TARGET_BELLAGIO, 1, [Use Bellagio OpenMAX IL target])
+     ;;
++  hybris)
++    AC_DEFINE(USE_OMX_TARGET_HYBRIS, 1, [Use libhybris OpenMAX IL target])
++    ;;
+   none|*)
+-    AC_ERROR([invalid OpenMAX IL target, you must specify one of --with-omx-target={generic,rpi,bellagio}])
++    AC_ERROR([invalid OpenMAX IL target, you must specify one of --with-omx-target={generic,rpi,bellagio,hybris}])
+     ;;
+ esac
+ AM_CONDITIONAL(USE_OMX_TARGET_GENERIC, test "x$ac_cv_omx_target" = "xgeneric")
+ AM_CONDITIONAL(USE_OMX_TARGET_BELLAGIO, test "x$ac_cv_omx_target" = "xbellagio")
+ AM_CONDITIONAL(USE_OMX_TARGET_RPI, test "x$ac_cv_omx_target" = "xrpi")
++AM_CONDITIONAL(USE_OMX_TARGET_HYBRIS, test "x$ac_cv_omx_target" = "xhybris")
+ 
+ AC_ARG_WITH([omx-struct-packing],
+         AS_HELP_STRING([--with-omx-struct-packing],[Force OpenMAX struct packing, (default is none)]),
+diff --git a/omx/HardwareAPI.h b/omx/HardwareAPI.h
+new file mode 100644
+index 0000000..ed9849c
+--- /dev/null
++++ b/omx/HardwareAPI.h
+@@ -0,0 +1,116 @@
++/*
++ * Copyright (C) 2009 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef HARDWARE_API_H_
++
++#define HARDWARE_API_H_
++
++#include <system/window.h>
++#include <OMX_Component.h>
++
++// A pointer to this struct is passed to the OMX_SetParameter when the extension
++// index for the 'OMX.google.android.index.enableAndroidNativeBuffers' extension
++// is given.
++//
++// When Android native buffer use is disabled for a port (the default state),
++// the OMX node should operate as normal, and expect UseBuffer calls to set its
++// buffers.  This is the mode that will be used when CPU access to the buffer is
++// required.
++//
++// When Android native buffer use has been enabled for a given port, the video
++// color format for the port is to be interpreted as an Android pixel format
++// rather than an OMX color format.  The node should then expect to receive
++// UseAndroidNativeBuffer calls (via OMX_SetParameter) rather than UseBuffer
++// calls for that port.
++struct EnableAndroidNativeBuffersParams {
++    OMX_U32 nSize;
++    OMX_VERSIONTYPE nVersion;
++    OMX_U32 nPortIndex;
++    OMX_BOOL enable;
++};
++
++// A pointer to this struct is passed to OMX_SetParameter() when the extension
++// index "OMX.google.android.index.storeMetaDataInBuffers"
++// is given.
++//
++// When meta data is stored in the video buffers passed between OMX clients
++// and OMX components, interpretation of the buffer data is up to the
++// buffer receiver, and the data may or may not be the actual video data, but
++// some information helpful for the receiver to locate the actual data.
++// The buffer receiver thus needs to know how to interpret what is stored
++// in these buffers, with mechanisms pre-determined externally. How to
++// interpret the meta data is outside of the scope of this method.
++//
++// Currently, this is specifically used to pass meta data from video source
++// (camera component, for instance) to video encoder to avoid memcpying of
++// input video frame data. To do this, bStoreMetaDta is set to OMX_TRUE.
++// If bStoreMetaData is set to false, real YUV frame data will be stored
++// in the buffers. In addition, if no OMX_SetParameter() call is made
++// with the corresponding extension index, real YUV data is stored
++// in the buffers.
++struct StoreMetaDataInBuffersParams {
++    OMX_U32 nSize;
++    OMX_VERSIONTYPE nVersion;
++    OMX_U32 nPortIndex;
++    OMX_BOOL bStoreMetaData;
++};
++
++// A pointer to this struct is passed to OMX_SetParameter when the extension
++// index for the 'OMX.google.android.index.useAndroidNativeBuffer' extension is
++// given.  This call will only be performed if a prior call was made with the
++// 'OMX.google.android.index.enableAndroidNativeBuffers' extension index,
++// enabling use of Android native buffers.
++#if 0
++struct UseAndroidNativeBufferParams {
++    OMX_U32 nSize;
++    OMX_VERSIONTYPE nVersion;
++    OMX_U32 nPortIndex;
++    OMX_PTR pAppPrivate;
++    OMX_BUFFERHEADERTYPE **bufferHeader;
++    const sp<ANativeWindowBuffer>& nativeBuffer;
++};
++#endif
++
++// A pointer to this struct is passed to OMX_GetParameter when the extension
++// index for the 'OMX.google.android.index.getAndroidNativeBufferUsage'
++// extension is given.  The usage bits returned from this query will be used to
++// allocate the Gralloc buffers that get passed to the useAndroidNativeBuffer
++// command.
++struct GetAndroidNativeBufferUsageParams {
++    OMX_U32 nSize;              // IN
++    OMX_VERSIONTYPE nVersion;   // IN
++    OMX_U32 nPortIndex;         // IN
++    OMX_U32 nUsage;             // OUT
++};
++
++// An enum OMX_COLOR_FormatAndroidOpaque to indicate an opaque colorformat
++// is declared in media/stagefright/openmax/OMX_IVCommon.h
++// This will inform the encoder that the actual
++// colorformat will be relayed by the GRalloc Buffers.
++// OMX_COLOR_FormatAndroidOpaque  = 0x7F000001,
++
++// A pointer to this struct is passed to OMX_SetParameter when the extension
++// index for the 'OMX.google.android.index.prependSPSPPSToIDRFrames' extension
++// is given.
++// A successful result indicates that future IDR frames will be prefixed by
++// SPS/PPS.
++struct PrependSPSPPSToIDRFramesParams {
++    OMX_U32 nSize;
++    OMX_VERSIONTYPE nVersion;
++    OMX_BOOL bEnable;
++};
++
++#endif  // HARDWARE_API_H_
+diff --git a/omx/Makefile.am b/omx/Makefile.am
+index 9371e8b..4591cbb 100644
+--- a/omx/Makefile.am
++++ b/omx/Makefile.am
+@@ -62,7 +62,9 @@ noinst_HEADERS = \
+ 	gstomxamrdec.h \
+ 	gstomxaudiosink.h \
+ 	gstomxanalogaudiosink.h \
+-	gstomxhdmiaudiosink.h 	
++	gstomxhdmiaudiosink.h \	
++	hybris.h \
++	HardwareAPI.h
+ 
+ if !HAVE_EXTERNAL_OMX
+ OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
+diff --git a/omx/gstomx.c b/omx/gstomx.c
+index f9b41eb..883cc17 100644
+--- a/omx/gstomx.c
++++ b/omx/gstomx.c
+@@ -46,6 +46,11 @@
+ #include "gstomxanalogaudiosink.h"
+ #include "gstomxhdmiaudiosink.h"
+ 
++#ifdef HAVE_HYBRIS
++#include "hybris.h"
++#include <dlfcn.h>
++#endif
++
+ GST_DEBUG_CATEGORY (gstomx_debug);
+ #define GST_CAT_DEFAULT gstomx_debug
+ 
+@@ -179,6 +184,88 @@ error:
+   }
+ }
+ 
++GstOMXCore *
++gst_omx_core_acquire_hybris (const gchar * filename)
++{
++  GstOMXCore *core;
++
++  G_LOCK (core_handles);
++  if (!core_handles)
++    core_handles =
++        g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++
++  core = g_hash_table_lookup (core_handles, filename);
++  if (!core) {
++    core = g_slice_new0 (GstOMXCore);
++    g_mutex_init (&core->lock);
++    core->user_count = 0;
++    g_hash_table_insert (core_handles, g_strdup (filename), core);
++    core->module = NULL;
++    core->hybris_module = android_dlopen (filename, RTLD_LAZY);
++    if (!core->hybris_module)
++      goto load_failed;
++
++    core->init = android_dlsym (core->hybris_module, "OMX_Init");
++    if (!core->init)
++      goto symbol_error;
++    core->deinit = android_dlsym (core->hybris_module, "OMX_Deinit");
++    if (!core->deinit)
++      goto symbol_error;
++    core->get_handle = android_dlsym (core->hybris_module, "OMX_GetHandle");
++    if (!core->get_handle)
++      goto symbol_error;
++    core->free_handle = android_dlsym (core->hybris_module, "OMX_FreeHandle");
++    if (!core->free_handle)
++      goto symbol_error;
++
++    GST_DEBUG ("Successfully loaded core '%s'", filename);
++  }
++
++  g_mutex_lock (&core->lock);
++  core->user_count++;
++  if (core->user_count == 1) {
++    OMX_ERRORTYPE err;
++
++    err = core->init ();
++    if (err != OMX_ErrorNone) {
++      GST_ERROR ("Failed to initialize core '%s': 0x%08x", filename, err);
++      g_mutex_unlock (&core->lock);
++      goto error;
++    }
++
++    GST_DEBUG ("Successfully initialized core '%s'", filename);
++  }
++
++  g_mutex_unlock (&core->lock);
++  G_UNLOCK (core_handles);
++
++  return core;
++
++load_failed:
++  {
++    GST_ERROR ("Failed to load module '%s'", filename);
++    goto error;
++  }
++symbol_error:
++  {
++    GST_ERROR ("Failed to locate required OpenMAX symbol in '%s'", filename);
++    android_dlclose (core->hybris_module);
++    core->module = NULL;
++    core->hybris_module = NULL;
++    goto error;
++  }
++error:
++  {
++    g_hash_table_remove (core_handles, filename);
++    g_mutex_clear (&core->lock);
++    g_slice_free (GstOMXCore, core);
++
++    G_UNLOCK (core_handles);
++
++    return NULL;
++  }
++}
++
+ void
+ gst_omx_core_release (GstOMXCore * core)
+ {
+@@ -670,7 +757,17 @@ gst_omx_component_new (GstObject * parent, const gchar * core_name,
+   GstOMXComponent *comp;
+   const gchar *dot;
+ 
+-  core = gst_omx_core_acquire (core_name);
++  if (hacks & GST_OMX_HACK_HYBRIS) {
++#ifndef HAVE_HYBRIS
++    GST_ERROR_OBJECT (parent,
++        "hybris hack enabled but hybris support has not been compiled in");
++    return NULL;
++#else
++    core = gst_omx_core_acquire_hybris (core_name);
++#endif /* HAVE_HYBRIS */
++  } else
++    core = gst_omx_core_acquire (core_name);
++
+   if (!core)
+     return NULL;
+ 
+@@ -2476,6 +2573,8 @@ gst_omx_parse_hacks (gchar ** hacks)
+       hacks_flags |= GST_OMX_HACK_EVENT_PORT_SETTINGS_CHANGED_PORT_0_TO_1;
+     else if (g_str_equal (*hacks, "video-framerate-integer"))
+       hacks_flags |= GST_OMX_HACK_VIDEO_FRAMERATE_INTEGER;
++    else if (g_str_equal (*hacks, "hybris"))
++      hacks_flags |= GST_OMX_HACK_HYBRIS;
+     else if (g_str_equal (*hacks, "syncframe-flag-not-used"))
+       hacks_flags |= GST_OMX_HACK_SYNCFRAME_FLAG_NOT_USED;
+     else if (g_str_equal (*hacks, "no-component-reconfigure"))
+diff --git a/omx/gstomx.h b/omx/gstomx.h
+index 60a315b..b5ad412 100644
+--- a/omx/gstomx.h
++++ b/omx/gstomx.h
+@@ -134,6 +134,12 @@ G_BEGIN_DECLS
+  */
+ #define GST_OMX_HACK_NO_DISABLE_OUTPORT                               G_GUINT64_CONSTANT (0x0000000000000100)
+ 
++/* If the OpenMAX core should be loaded via libhybris or not
++ * This is used to load Android binaries
++ */
++#define GST_OMX_HACK_HYBRIS                                           G_GUINT64_CONSTANT (0x0000000000000200)
++
++
+ typedef struct _GstOMXCore GstOMXCore;
+ typedef struct _GstOMXPort GstOMXPort;
+ typedef enum _GstOMXPortDirection GstOMXPortDirection;
+@@ -159,6 +165,10 @@ struct _GstOMXCore {
+   /* Handle to the OpenMAX IL core shared library */
+   GModule *module;
+ 
++#ifdef HAVE_HYBRIS
++  void *hybris_module;
++#endif
++
+   /* Current number of users, transitions from/to 0
+    * call init/deinit */
+   GMutex lock;
+@@ -318,6 +328,10 @@ const gchar *     gst_omx_command_to_string (OMX_COMMANDTYPE cmd);
+ guint64           gst_omx_parse_hacks (gchar ** hacks);
+ 
+ GstOMXCore *      gst_omx_core_acquire (const gchar * filename);
++#ifdef HAVE_HYBRIS
++GstOMXCore *      gst_omx_core_acquire_hybris (const gchar * filename);
++#endif
++
+ void              gst_omx_core_release (GstOMXCore * core);
+ 
+ 
+diff --git a/omx/hybris.h b/omx/hybris.h
+new file mode 100644
+index 0000000..3516155
+--- /dev/null
++++ b/omx/hybris.h
+@@ -0,0 +1,25 @@
++/*
++ * Copyright (C) 2013 Simon Busch <morphis@gravedo.de>
++ *               2012 Canonical Ltd
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef HYBRIS_BINDING_H_
++#define HYBRIS_BINDING_H_
++
++void *android_dlopen(const char *filename, int flag);
++void *android_dlsym(void *name, const char *symbol);
++void android_dlclose(void *handle);
++
++#endif
+-- 
+1.8.3-rc3
+

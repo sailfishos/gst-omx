@@ -1,0 +1,450 @@
+From 85ad6987bd4ecc825a717dff473155caf9383d25 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Wed, 16 Apr 2014 05:15:27 +0000
+Subject: [PATCH 07/11] [gst-omx] Add support for android native buffers.
+ Contributes to JB#1956
+
+---
+ configure.ac         |  28 +++++++++++++
+ omx/Makefile.am      |  17 +++++++-
+ omx/gstomxandroid.c  |  94 +++++++++++++++++++++++++++++++++++++++++
+ omx/gstomxandroid.h  |  39 +++++++++++++++++
+ omx/gstomxvideodec.c | 116 ++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 291 insertions(+), 3 deletions(-)
+ create mode 100644 omx/gstomxandroid.c
+ create mode 100644 omx/gstomxandroid.h
+
+diff --git a/configure.ac b/configure.ac
+index 9c21eb4..74d32a4 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -214,6 +214,33 @@ AC_CHECK_DECLS([OMX_VIDEO_CodingTheora],
+   ], [[$VIDEO_HEADERS]])
+ AM_CONDITIONAL(HAVE_THEORA, test "x$HAVE_THEORA" = "xyes")
+ 
++PKG_CHECK_MODULES(DROID, [
++  android-headers
++], [
++  AC_SUBST(DROID_CFLAGS)
++  AC_SUBST(DROID_LIBS)
++  AC_DEFINE(HAVE_DROID, 1, [android-headers package available])
++  HAVE_DROID=yes
++], [
++  HAVE_DROID=no
++  AC_MSG_ERROR([
++      android-headers package is missing
++  ])
++])
++AM_CONDITIONAL(HAVE_DROID, test "x$HAVE_DROID" = "xyes")
++
++PKG_CHECK_MODULES(NATIVE_BUFFERS, [
++  android-headers
++], [
++  AC_SUBST(NATIVE_BUFFERS_CFLAGS)
++  AC_SUBST(NATIVE_BUFFERS_LIBS)
++  AC_DEFINE(HAVE_A_NATIVE_WINDOW_BUFFER, 1, [Enable decoding to android native buffers])
++  HAVE_A_NATIVE_WINDOW_BUFFER=yes
++], [
++  HAVE_A_NATIVE_WINDOW_BUFFER=no
++])
++AM_CONDITIONAL(HAVE_A_NATIVE_WINDOW_BUFFER, test "x$HAVE_A_NATIVE_WINDOW_BUFFER" = "xyes")
++
+ dnl Check for -Bsymbolic-functions linker flag used to avoid
+ dnl intra-library PLT jumps, if available.
+ AC_ARG_ENABLE(Bsymbolic,
+diff --git a/omx/Makefile.am b/omx/Makefile.am
+index 599916d..5fad5a0 100644
+--- a/omx/Makefile.am
++++ b/omx/Makefile.am
+@@ -10,6 +10,11 @@ THEORA_C_FILES=gstomxtheoradec.c
+ THEORA_H_FILES=gstomxtheoradec.h
+ endif
+ 
++if HAVE_DROID
++DROID_C_FILES = gstomxandroid.c
++DROID_H_FILES = gstomxandroid.h
++endif
++
+ libgstomx_la_SOURCES = \
+ 	gstomx.c \
+ 	gstomxvideo.c \
+@@ -34,7 +39,8 @@ libgstomx_la_SOURCES = \
+ 	gstomxamrdec.c \
+ 	gstomxaudiosink.c \
+ 	gstomxanalogaudiosink.c \
+-	gstomxhdmiaudiosink.c	
++	gstomxhdmiaudiosink.c \
++	$(DROID_C_FILES)
+ 
+ noinst_HEADERS = \
+ 	gstomx.h \
+@@ -46,6 +52,7 @@ noinst_HEADERS = \
+ 	gstomxmjpegdec.h \
+ 	gstomxmpeg2videodec.h \
+ 	gstomxmpeg4videodec.h \
++	gstomxmpeg2videodec.h \
+ 	gstomxh264dec.h \
+ 	gstomxh263dec.h \
+ 	gstomxwmvdec.h \
+@@ -63,6 +70,7 @@ noinst_HEADERS = \
+ 	gstomxhdmiaudiosink.h \	
+ 	hybris.h \
+ 	HardwareAPI.h
++	$(DROID_H_FILES)
+ 
+ if !HAVE_EXTERNAL_OMX
+ OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
+@@ -72,12 +80,19 @@ libgstomx_la_CFLAGS = \
+ 	-DGST_USE_UNSTABLE_API=1 \
+ 	$(OMX_INCLUDEPATH) \
+ 	$(GST_GL_CFLAGS) \
++	$(NATIVE_BUFFERS_CFLAGS) \
++	$(DROID_CFLAGS) \
++	$(GST_EGL_CFLAGS) \
+ 	$(GST_PLUGINS_BASE_CFLAGS) \
+ 	$(GST_BASE_CFLAGS) \
+ 	$(GST_CFLAGS) \
+ 	$(GMODULE_NO_EXPORT_CFLAGS)
++
+ libgstomx_la_LIBADD = \
+ 	$(GST_GL_LIBS) \
++	$(NATIVE_BUFFERS_LIBS) \
++	$(DROID_LIBS) \
++	$(GST_EGL_LIBS) \
+ 	$(GST_PLUGINS_BASE_LIBS) \
+ 	-lgstaudio-@GST_API_VERSION@ \
+ 	-lgstpbutils-@GST_API_VERSION@ \
+diff --git a/omx/gstomxandroid.c b/omx/gstomxandroid.c
+new file mode 100644
+index 0000000..323fe3e
+--- /dev/null
++++ b/omx/gstomxandroid.c
+@@ -0,0 +1,94 @@
++/*
++ * Copyright (C) 2014 Jolla Ltd.
++ *   Author: Andrew den Exter <andrew.den.exter@jollamobile.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation
++ * version 2.1 of the License.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
++ *
++ */
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#include "gstomxandroid.h"
++
++#include "HardwareAPI.h"
++
++OMX_ERRORTYPE
++gst_omx_android_enable_native_buffers (GstOMXComponent * comp,
++    OMX_U32 port_index, OMX_BOOL enable)
++{
++  OMX_ERRORTYPE err;
++  OMX_INDEXTYPE extension;
++  struct EnableAndroidNativeBuffersParams params;
++
++  err = OMX_GetExtensionIndex (comp->handle,
++      (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers2",
++      &extension);
++  if (err != OMX_ErrorNone)
++    return err;
++
++  GST_OMX_INIT_STRUCT (&params);
++  params.nPortIndex = port_index;
++  params.enable = enable;
++
++  return gst_omx_component_set_parameter (comp, extension, &params);
++}
++
++OMX_ERRORTYPE
++gst_omx_android_store_metadata_in_buffers (GstOMXComponent * comp,
++    OMX_U32 port_index, OMX_BOOL store_metadata)
++{
++  OMX_ERRORTYPE err;
++  OMX_INDEXTYPE extension;
++  struct StoreMetaDataInBuffersParams params;
++
++  err = OMX_GetExtensionIndex (comp->handle,
++      (OMX_STRING) "OMX.google.android.index.storeMetaDataInBuffers",
++      &extension);
++  if (err != OMX_ErrorNone)
++    return err;
++
++  GST_OMX_INIT_STRUCT (&params);
++  params.nPortIndex = port_index;
++  params.bStoreMetaData = store_metadata;
++
++  return gst_omx_component_set_parameter (comp, extension, &params);
++}
++
++OMX_U32
++gst_omx_android_get_native_buffer_usage (GstOMXComponent * comp,
++    OMX_U32 port_index)
++{
++  OMX_ERRORTYPE err;
++  OMX_INDEXTYPE extension;
++  struct GetAndroidNativeBufferUsageParams params;
++
++  err = OMX_GetExtensionIndex (comp->handle,
++      (OMX_STRING) "OMX.google.android.index.getAndroidNativeBufferUsage",
++      &extension);
++  if (err != OMX_ErrorNone)
++    return 0;
++
++  GST_OMX_INIT_STRUCT (&params);
++  params.nPortIndex = port_index;
++
++  err = gst_omx_component_get_parameter (comp, extension, &params);
++  if (err != OMX_ErrorNone) {
++    return params.nUsage;
++  } else {
++    return 0;
++  }
++}
+diff --git a/omx/gstomxandroid.h b/omx/gstomxandroid.h
+new file mode 100644
+index 0000000..f373c5d
+--- /dev/null
++++ b/omx/gstomxandroid.h
+@@ -0,0 +1,39 @@
++/*
++ * Copyright (C) 2014 Jolla Ltd.
++ *   Author: Andrew den Exter <andrew.den.exter@jollamobile.com>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation
++ * version 2.1 of the License.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
++ *
++ */
++
++#include "gstomx.h"
++
++#ifndef __GST_OMX_ANDROID_H__
++#define __GST_OMX_ANDROID_H__
++
++G_BEGIN_DECLS
++
++OMX_ERRORTYPE gst_omx_android_enable_native_buffers (GstOMXComponent * comp,
++    OMX_U32 port_index, OMX_BOOL enable);
++
++OMX_ERRORTYPE gst_omx_android_store_metadata_in_buffers (GstOMXComponent * comp,
++    OMX_U32 port_index, OMX_BOOL store_metadata);
++
++OMX_U32 gst_omx_android_get_native_buffer_usage (GstOMXComponent * comp,
++    OMX_U32 port_index);
++
++G_END_DECLS
++
++#endif
+diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
+index 802ac18..dad95c7 100644
+--- a/omx/gstomxvideodec.c
++++ b/omx/gstomxvideodec.c
+@@ -51,6 +51,11 @@
+ #include "gstomxvideo.h"
+ #include "gstomxvideodec.h"
+ 
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++#include <gst/allocators/gstdroidmediabuffer.h>
++#include <gst/allocators/gstdroidbufferpool.h>
++#endif
++
+ GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
+ #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
+ 
+@@ -127,6 +132,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
+       GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+       "RGBA") "; "
+ #endif
++#if defined (HAVE_A_NATIVE_WINDOW_BUFFER)
++      GST_VIDEO_CAPS_MAKE_WITH_FEATURES (
++        GST_CAPS_FEATURE_MEMORY_DROID_MEDIA_BUFFER,
++        "{YV12}") "; "
++#endif
+       "video/x-raw, "
+       "width = " GST_VIDEO_SIZE_RANGE ", "
+       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
+@@ -565,6 +575,29 @@ gst_omx_video_dec_use_egl_image (GstOMXPort *port, GstBuffer *buffer,
+ }
+ #endif
+ 
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++static OMX_ERRORTYPE
++gst_omx_video_dec_use_android_native_buffer (GstOMXPort *port, GstBuffer *buffer,
++    gpointer data, OMX_BUFFERHEADERTYPE **header)
++{
++  GstMemory *mem;
++  DroidMediaBuffer *native_buffer;
++
++  if (gst_buffer_n_memory (buffer) != 1
++      || !(mem = gst_buffer_peek_memory (buffer, 0))
++      || g_strcmp0 (mem->allocator->mem_type,
++          GST_ALLOCATOR_DROID_MEDIA_BUFFER) != 0) {
++    GST_INFO_OBJECT (port->comp->parent, "Failed to allocated EGLImage");
++    return OMX_ErrorUndefined;
++  }
++
++  native_buffer = gst_droid_media_buffer_memory_get_buffer (mem);
++
++  return OMX_UseBuffer (port->comp->handle, header, port->index, data,
++      port->port_def.nBufferSize, (OMX_U8 *) droid_media_buffer_get_handle(native_buffer));
++}
++#endif
++
+ static OMX_ERRORTYPE
+ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+ {
+@@ -577,6 +610,9 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+ #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
+   gboolean eglimage = FALSE
+ #endif
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++  gboolean android_native_buffers = FALSE;
++#endif
+   GstCaps *caps = NULL;
+   guint min = 0, max = 0;
+   GstOMXPortUseBuffer use_buffer = NULL;
+@@ -626,6 +662,12 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+     eglimage = self->eglimage
+         && (allocator && GST_IS_GL_MEMORY_EGL_ALLOCATOR (allocator));
+ #endif
++
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++    android_native_buffers = allocator
++        && g_strcmp0 (allocator->mem_type, GST_ALLOCATOR_DROID_MEDIA_BUFFER) == 0;
++#endif
++
+     caps = caps ? gst_caps_ref (caps) : NULL;
+ 
+     GST_DEBUG_OBJECT (self, "Trying to use pool %p with caps %" GST_PTR_FORMAT
+@@ -687,6 +729,23 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+   }
+ #endif
+ 
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++  if (android_native_buffers) {
++    if (OMX_ErrorNone != (err = gst_omx_android_enable_native_buffers (
++        self->dec, self->dec_out_port->index, TRUE))) {
++      GST_WARNING_OBJECT (self,
++          "Failed to enable native buffers: %s (0x%08x)",
++          gst_omx_error_to_string (err), err);
++       goto done;
++    }
++
++    use_buffer = gst_omx_video_dec_use_android_native_buffer;
++  } else {
++    gst_omx_android_enable_native_buffers (
++        self->dec, self->dec_out_port->index, FALSE);
++  }
++#endif
++
+   if (min != port->port_def.nBufferCountActual) {
+     err = gst_omx_port_update_port_definition (port, NULL);
+     if (err == OMX_ErrorNone) {
+@@ -1885,8 +1944,12 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
+       /* Need to allocate buffers to reach Idle state */
+       if (gst_omx_port_allocate_buffers (self->dec_in_port) != OMX_ErrorNone)
+         return FALSE;
+-      if (gst_omx_port_allocate_buffers (self->dec_out_port) != OMX_ErrorNone)
++      if ((klass->cdata.hacks & GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE)) {
++        if (gst_omx_port_allocate_buffers (self->dec_out_port) != OMX_ErrorNone)
++          return FALSE;
++      } else if (gst_omx_video_dec_allocate_output_buffers (self) != OMX_ErrorNone) {
+         return FALSE;
++      }
+     }
+ 
+     if (gst_omx_component_get_state (self->dec,
+@@ -2431,9 +2494,47 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+   }
+ #endif
+ 
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++  {
++    gint i, n;
++    gboolean found = FALSE;
++    GstCapsFeatures *feature = gst_caps_get_features (caps, 0);
++    /* Prefer an anativewindowbuffer allocator if available and we want to use it */
++    n = gst_query_get_n_allocation_pools (query);
++    for (i = 0; i < n; i++) {
++      guint size;
++      GstAllocator *allocator;
++      GstStructure *config;
++
++      gst_query_parse_nth_allocation_pool (query, i, &pool, &size, &min, &max);
++      config = gst_buffer_pool_get_config (pool);
++      gst_buffer_pool_config_get_allocator (config, &allocator, NULL);
++      if (allocator
++          && g_strcmp0 (allocator->mem_type,
++              GST_ALLOCATOR_DROID_MEDIA_BUFFER) == 0) {
++        found = TRUE;
++        gst_query_set_nth_allocation_pool (query, 0, pool, size, min, max);
++        while (gst_query_get_n_allocation_pools (query) > 1)
++          gst_query_remove_nth_allocation_pool (query, 1);
++
++        break;
++      }
++    }
++
++    /* if try to negotiate with caps feature memory:anativewindowbuffer
++     * and if allocator is not of type memory anativewindowbuffer then fails */
++    if (feature
++        && gst_caps_features_contains (feature,
++            GST_CAPS_FEATURE_MEMORY_DROID_MEDIA_BUFFER) && !found) {
++      return FALSE;
++    }
++  }
++#endif
++
+   if (!GST_VIDEO_DECODER_CLASS
+-      (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query))
++      (gst_omx_video_dec_parent_class)->decide_allocation (bdec, query)) {
+     return FALSE;
++  }
+ 
+   g_assert (gst_query_get_n_allocation_pools (query) > 0);
+   gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, &min, &max);
+@@ -2448,6 +2549,17 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+   gst_buffer_pool_config_set_params (config, caps, port_def.nBufferSize,
+       port_def.nBufferCountActual, port_def.nBufferCountActual);
+ 
++#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
++  {
++    gint usage = 0;
++
++    gst_structure_get_int (config, "usage", &usage);
++    usage |= gst_omx_android_get_native_buffer_usage (self->dec,
++        self->dec_out_port->index);
++    gst_structure_set (config, "usage", G_TYPE_INT, usage, NULL);
++  }
++#endif
++
+   gst_buffer_pool_set_config (pool, config);
+   gst_object_unref (pool);
+ 
+-- 
+1.8.3-rc3
+

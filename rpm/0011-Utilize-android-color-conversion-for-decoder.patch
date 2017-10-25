@@ -1,0 +1,650 @@
+From 1f8fbb7be692bceaced0e259602de79389b9da06 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jollamobile.com>
+Date: Mon, 21 Jul 2014 14:27:33 +1000
+Subject: [PATCH 11/11] [gst-omx] Utilize android color conversion for decoder
+ output. Contributes to JB#19560
+
+The libI420colorconvert.so android library provides a (potentially)
+faster color conversion from the decoders native format to I420.
+Add a hack that allows using this to provide I420 output inplace of
+the normal copy to output buffer which would then require color
+conversion.
+---
+ omx/II420ColorConverter.h | 129 ++++++++++++++++++++++++++++++++++++++++
+ omx/android/rect.h        |  41 +++++++++++++
+ omx/gstomx.c              |   2 +
+ omx/gstomx.h              |   5 ++
+ omx/gstomxandroid.c       |  61 +++++++++++++++++++
+ omx/gstomxandroid.h       |  13 ++++
+ omx/gstomxvideo.c         |   1 +
+ omx/gstomxvideo.h         |   1 +
+ omx/gstomxvideodec.c      | 147 +++++++++++++++++++++++++++++++++++++++++-----
+ omx/gstomxvideodec.h      |  13 ++++
+ 10 files changed, 397 insertions(+), 16 deletions(-)
+ create mode 100644 omx/II420ColorConverter.h
+ create mode 100644 omx/android/rect.h
+
+diff --git a/omx/II420ColorConverter.h b/omx/II420ColorConverter.h
+new file mode 100644
+index 0000000..8e58613
+--- /dev/null
++++ b/omx/II420ColorConverter.h
+@@ -0,0 +1,129 @@
++/*
++ * Copyright (C) 2011 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef II420_COLOR_CONVERTER_H
++
++#define II420_COLOR_CONVERTER_H
++
++#include <stdint.h>
++#include <android/rect.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++typedef struct II420ColorConverter {
++
++    /*
++     * getDecoderOutputFormat
++     * Returns the color format (OMX_COLOR_FORMATTYPE) of the decoder output.
++     * If it is I420 (OMX_COLOR_FormatYUV420Planar), no conversion is needed,
++     * and convertDecoderOutputToI420() can be a no-op.
++     */
++    int (*getDecoderOutputFormat)();
++
++    /*
++     * convertDecoderOutputToI420
++     * @Desc     Converts from the decoder output format to I420 format.
++     * @note     Caller (e.g. VideoEditor) owns the buffers
++     * @param    decoderBits   (IN) Pointer to the buffer contains decoder output
++     * @param    decoderWidth  (IN) Buffer width, as reported by the decoder
++     *                              metadata (kKeyWidth)
++     * @param    decoderHeight (IN) Buffer height, as reported by the decoder
++     *                              metadata (kKeyHeight)
++     * @param    decoderRect   (IN) The rectangle of the actual frame, as
++     *                              reported by decoder metadata (kKeyCropRect)
++     * @param    dstBits      (OUT) Pointer to the output I420 buffer
++     * @return   -1 Any error
++     * @return   0  No Error
++     */
++    int (*convertDecoderOutputToI420)(
++        void* decoderBits, int decoderWidth, int decoderHeight,
++        ARect decoderRect, void* dstBits);
++
++    /*
++     * getEncoderIntputFormat
++     * Returns the color format (OMX_COLOR_FORMATTYPE) of the encoder input.
++     * If it is I420 (OMX_COLOR_FormatYUV420Planar), no conversion is needed,
++     * and convertI420ToEncoderInput() and getEncoderInputBufferInfo() can
++     * be no-ops.
++     */
++    int (*getEncoderInputFormat)();
++
++    /* convertI420ToEncoderInput
++     * @Desc     This function converts from I420 to the encoder input format
++     * @note     Caller (e.g. VideoEditor) owns the buffers
++     * @param    srcBits       (IN) Pointer to the input I420 buffer
++     * @param    srcWidth      (IN) Width of the I420 frame
++     * @param    srcHeight     (IN) Height of the I420 frame
++     * @param    encoderWidth  (IN) Encoder buffer width, as calculated by
++     *                              getEncoderBufferInfo()
++     * @param    encoderHeight (IN) Encoder buffer height, as calculated by
++     *                              getEncoderBufferInfo()
++     * @param    encoderRect   (IN) Rect coordinates of the actual frame inside
++     *                              the encoder buffer, as calculated by
++     *                              getEncoderBufferInfo().
++     * @param    encoderBits  (OUT) Pointer to the output buffer. The size of
++     *                              this buffer is calculated by
++     *                              getEncoderBufferInfo()
++     * @return   -1 Any error
++     * @return   0  No Error
++     */
++    int (*convertI420ToEncoderInput)(
++        void* srcBits, int srcWidth, int srcHeight,
++        int encoderWidth, int encoderHeight, ARect encoderRect,
++        void* encoderBits);
++
++    /* getEncoderInputBufferInfo
++     * @Desc     This function returns metadata for the encoder input buffer
++     *           based on the actual I420 frame width and height.
++     * @note     This API should be be used to obtain the necessary information
++     *           before calling convertI420ToEncoderInput().
++     *           VideoEditor knows only the width and height of the I420 buffer,
++     *           but it also needs know the width, height, and size of the
++     *           encoder input buffer. The encoder input buffer width and height
++     *           are used to set the metadata for the encoder.
++     * @param    srcWidth      (IN) Width of the I420 frame
++     * @param    srcHeight     (IN) Height of the I420 frame
++     * @param    encoderWidth  (OUT) Encoder buffer width needed
++     * @param    encoderHeight (OUT) Encoder buffer height needed
++     * @param    encoderRect   (OUT) Rect coordinates of the actual frame inside
++     *                               the encoder buffer
++     * @param    encoderBufferSize  (OUT) The size of the buffer that need to be
++     *                              allocated by the caller before invoking
++     *                              convertI420ToEncoderInput().
++     * @return   -1 Any error
++     * @return   0  No Error
++     */
++    int (*getEncoderInputBufferInfo)(
++        int srcWidth, int srcHeight,
++        int* encoderWidth, int* encoderHeight,
++        ARect* encoderRect, int* encoderBufferSize);
++
++    void (*openColorConverterLib)();
++    void (*closeColorConverterLib)();
++
++} II420ColorConverter;
++
++/* The only function that the shared library needs to expose: It fills the
++   function pointers in II420ColorConverter */
++void getI420ColorConverter(II420ColorConverter *converter);
++
++#if defined(__cplusplus)
++}
++#endif
++
++#endif  // II420_COLOR_CONVERTER_H
+diff --git a/omx/android/rect.h b/omx/android/rect.h
+new file mode 100644
+index 0000000..bcd42a9
+--- /dev/null
++++ b/omx/android/rect.h
+@@ -0,0 +1,41 @@
++/*
++ * Copyright (C) 2010 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++
++#ifndef ANDROID_RECT_H
++#define ANDROID_RECT_H
++
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++typedef struct ARect {
++#ifdef __cplusplus
++    typedef int32_t value_type;
++#endif
++    int32_t left;
++    int32_t top;
++    int32_t right;
++    int32_t bottom;
++} ARect;
++
++#ifdef __cplusplus
++};
++#endif
++
++#endif // ANDROID_RECT_H
+diff --git a/omx/gstomx.c b/omx/gstomx.c
+index a506217..29d6502 100644
+--- a/omx/gstomx.c
++++ b/omx/gstomx.c
+@@ -2786,6 +2786,8 @@ gst_omx_parse_hacks (gchar ** hacks)
+       hacks_flags |= GST_OMX_HACK_HYBRIS;
+     else if (g_str_equal (*hacks, "implicit-format-change"))
+       hacks_flags |= GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE;
++    else if (g_str_equal (*hacks, "i420-color-conversion"))
++      hacks_flags |= GST_OMX_HACK_I420_COLOR_CONVERSION;
+     else if (g_str_equal (*hacks, "syncframe-flag-not-used"))
+       hacks_flags |= GST_OMX_HACK_SYNCFRAME_FLAG_NOT_USED;
+     else if (g_str_equal (*hacks, "no-component-reconfigure"))
+diff --git a/omx/gstomx.h b/omx/gstomx.h
+index b6e6af5..f593b09 100644
+--- a/omx/gstomx.h
++++ b/omx/gstomx.h
+@@ -145,6 +145,11 @@ G_BEGIN_DECLS
+  */
+ #define GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE                           G_GUINT64_CONSTANT (0x0000000000000400)
+ 
++/* The component supports a post process color conversion to I420 using
++ * the android libI420colorconvert library.
++ */
++#define GST_OMX_HACK_I420_COLOR_CONVERSION                            G_GUINT64_CONSTANT (0x0000000000000800)
++
+ typedef struct _GstOMXCore GstOMXCore;
+ typedef struct _GstOMXPort GstOMXPort;
+ typedef enum _GstOMXPortDirection GstOMXPortDirection;
+diff --git a/omx/gstomxandroid.c b/omx/gstomxandroid.c
+index 7220b35..9be5d53 100644
+--- a/omx/gstomxandroid.c
++++ b/omx/gstomxandroid.c
+@@ -25,6 +25,10 @@
+ #include "gstomxandroid.h"
+ 
+ #include "HardwareAPI.h"
++#include <dlfcn.h>
++
++extern void *android_dlopen (const char *filename, int flag);
++extern void *android_dlsym (void *name, const char *symbol);
+ 
+ OMX_ERRORTYPE
+ gst_omx_android_enable_native_buffers (GstOMXComponent * comp,
+@@ -124,3 +128,60 @@ gst_omx_android_append_metadata_feature (GstOMXComponent * comp,
+ 
+   return gst_caps_merge (caps, featureCaps);
+ }
++
++gboolean
++gst_omx_android_color_converter_open (II420ColorConverter *converter)
++{
++  static void *library = NULL;
++  static void (*get_i420_color_converter)(II420ColorConverter *converter)
++      = NULL;
++
++  if (converter->openColorConverterLib)
++    return TRUE;
++
++  if (!library)
++    library = android_dlopen ("/system/lib/libI420colorconvert.so", RTLD_LAZY);
++
++  if (library && !get_i420_color_converter) {
++    get_i420_color_converter = library
++        ? android_dlsym (library, "getI420ColorConverter") : NULL;
++  }
++
++  if (get_i420_color_converter) {
++    get_i420_color_converter (converter);
++    converter->openColorConverterLib ();
++
++    return TRUE;
++  } else {
++    memset (converter, 0, sizeof(II420ColorConverter));
++
++    return FALSE;
++  }
++}
++
++void
++gst_omx_android_color_converter_close (II420ColorConverter *converter)
++{
++  if (converter->closeColorConverterLib) {
++    converter->closeColorConverterLib ();
++    memset (converter, 0, sizeof(II420ColorConverter));
++  }
++}
++
++OMX_COLOR_FORMATTYPE
++gst_omx_android_color_converter_decoder_format (II420ColorConverter *converter)
++{
++  return (OMX_COLOR_FORMATTYPE) converter->getDecoderOutputFormat ();
++}
++
++gboolean
++gst_omx_android_color_converter_decoder_to_i420 (II420ColorConverter *converter,
++    gpointer input,  gint width, gint height, OMX_CONFIG_RECTTYPE *crop,
++    gpointer output)
++{
++  ARect rect = { crop->nLeft, crop->nTop, crop->nLeft + crop->nWidth,
++      crop->nTop + crop->nHeight };
++
++  return converter->convertDecoderOutputToI420 (input, width, height, rect,
++      output) == 0;
++}
+diff --git a/omx/gstomxandroid.h b/omx/gstomxandroid.h
+index e66b22d..f02d214 100644
+--- a/omx/gstomxandroid.h
++++ b/omx/gstomxandroid.h
+@@ -20,6 +20,9 @@
+ 
+ #include "gstomx.h"
+ 
++
++#include "II420ColorConverter.h"
++
+ #ifndef __GST_OMX_ANDROID_H__
+ #define __GST_OMX_ANDROID_H__
+ 
+@@ -37,6 +40,16 @@ OMX_U32 gst_omx_android_get_native_buffer_usage (GstOMXComponent * comp,
+ GstCaps *gst_omx_android_append_metadata_feature (GstOMXComponent * comp,
+     GstCaps *caps);
+ 
++gboolean gst_omx_android_color_converter_open (II420ColorConverter *converter);
++void gst_omx_android_color_converter_close (II420ColorConverter *converter);
++
++OMX_COLOR_FORMATTYPE gst_omx_android_color_converter_decoder_format
++    (II420ColorConverter *converter);
++
++gboolean gst_omx_android_color_converter_decoder_to_i420
++    (II420ColorConverter *converter, gpointer input, gint width, gint height,
++     OMX_CONFIG_RECTTYPE *crop, gpointer output);
++
+ G_END_DECLS
+ 
+ #endif
+diff --git a/omx/gstomxvideo.c b/omx/gstomxvideo.c
+index 4e1ea26..ef530dd 100644
+--- a/omx/gstomxvideo.c
++++ b/omx/gstomxvideo.c
+@@ -135,6 +135,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
+         m = g_slice_new (GstOMXVideoNegotiationMap);
+         m->format = f;
+         m->type = param.eColorFormat;
++        m->convert_to_i420 = FALSE;
+         negotiation_map = g_list_append (negotiation_map, m);
+         GST_DEBUG_OBJECT (comp->parent,
+             "Component supports %s (%d) at index %u",
+diff --git a/omx/gstomxvideo.h b/omx/gstomxvideo.h
+index f146df7..08cd4b9 100644
+--- a/omx/gstomxvideo.h
++++ b/omx/gstomxvideo.h
+@@ -38,6 +38,7 @@ typedef struct
+ {
+   GstVideoFormat format;
+   OMX_COLOR_FORMATTYPE type;
++  gboolean convert_to_i420;
+ } GstOMXVideoNegotiationMap;
+ 
+ GstVideoFormat
+diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
+index dad95c7..834c768 100644
+--- a/omx/gstomxvideodec.c
++++ b/omx/gstomxvideodec.c
+@@ -256,6 +255,10 @@ gst_omx_video_dec_open (GstVideoDecoder * decoder)
+   GST_DEBUG_OBJECT (self, "Opened EGL renderer");
+ #endif
+ 
++#ifdef HAVE_DROID
++  memset (&self->i420_color_converter, 0, sizeof (II420ColorConverter));
++#endif
++
+   return TRUE;
+ }
+ 
+@@ -331,6 +334,10 @@ gst_omx_video_dec_close (GstVideoDecoder * decoder)
+   self->egl_render = NULL;
+ #endif
+ 
++#ifdef HAVE_DROID
++  gst_omx_android_color_converter_close (&self->i420_color_converter);
++#endif
++
+   self->started = FALSE;
+ 
+   GST_DEBUG_OBJECT (self, "Closed decoder");
+@@ -552,6 +559,60 @@ done:
+   return ret;
+ }
+ 
++#ifdef HAVE_DROID
++
++static gboolean
++gst_omx_video_dec_convert_to_i420 (GstOMXVideoDec * self,
++    GstOMXBuffer * inbuf, GstBuffer * outbuf)
++{
++  GstVideoCodecState *state =
++      gst_video_decoder_get_output_state (GST_VIDEO_DECODER (self));
++  GstVideoInfo *vinfo = &state->info;
++  gboolean ret = FALSE;
++  GstMapInfo map = GST_MAP_INFO_INIT;
++
++  if (gst_buffer_map (outbuf, &map, GST_MAP_WRITE)) {
++    ret = gst_omx_android_color_converter_decoder_to_i420
++        (&self->i420_color_converter,
++        inbuf->omx_buf->pBuffer + inbuf->omx_buf->nOffset, vinfo->width,
++        vinfo->height, &self->crop_rect, map.data);
++    gst_buffer_unmap (outbuf, &map);
++
++    if (ret) {
++        gsize offset[GST_VIDEO_MAX_PLANES] = { 0, vinfo->width * vinfo->height,
++            vinfo->width * vinfo->height * 5 / 4, 0 };
++        gint stride[GST_VIDEO_MAX_PLANES] = { vinfo->width, vinfo->width / 2,
++            vinfo->width / 2, 0 };
++
++        gst_buffer_add_video_meta_full (outbuf, GST_VIDEO_FRAME_FLAG_NONE,
++            GST_VIDEO_FORMAT_I420, vinfo->width, vinfo->height, 3,
++            offset, stride);
++    }
++  }
++
++  return ret;
++}
++
++#endif
++
++static void
++gst_omx_video_dec_get_crop_rect (GstOMXVideoDec * self,
++    OMX_PARAM_PORTDEFINITIONTYPE *port_def)
++{
++  OMX_ERRORTYPE err;
++
++  GST_OMX_INIT_STRUCT (&self->crop_rect);
++  self->crop_rect.nPortIndex = self->dec_out_port->index;
++  err = gst_omx_component_get_config (self->dec,
++      OMX_IndexConfigCommonOutputCrop, &self->crop_rect);
++  if (err != OMX_ErrorNone) {
++    self->crop_rect.nLeft = 0;
++    self->crop_rect.nTop = 0;
++    self->crop_rect.nWidth = port_def->format.video.nFrameWidth;
++    self->crop_rect.nHeight = port_def->format.video.nFrameHeight;
++  }
++}
++
+ #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
+ static OMX_ERRORTYPE
+ gst_omx_video_dec_use_egl_image (GstOMXPort *port, GstBuffer *buffer,
+@@ -1082,8 +1143,14 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
+   gst_omx_port_get_port_definition (port, &port_def);
+   g_assert (port_def.format.video.eCompressionFormat == OMX_VIDEO_CodingUnused);
+ 
+-  format =
+-      gst_omx_video_get_format_from_omx (port_def.format.video.eColorFormat);
++  if (!self->convert_to_i420) {
++    format =
++        gst_omx_video_get_format_from_omx (port_def.format.video.eColorFormat);
++#ifdef HAVE_DROID
++  } else {
++    format = GST_VIDEO_FORMAT_I420;
++#endif
++  }
+ 
+   if (format == GST_VIDEO_FORMAT_UNKNOWN) {
+     GST_ERROR_OBJECT (self, "Unsupported color format: %d",
+@@ -1093,6 +1160,8 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
+     goto done;
+   }
+ 
++  gst_omx_video_dec_get_crop_rect (self, &port_def);
++
+   GST_DEBUG_OBJECT (self,
+       "Setting output state: format %s (%d), width %u, height %u",
+       gst_video_format_to_string (format),
+@@ -1100,9 +1169,17 @@ gst_omx_video_dec_reconfigure_output_port (GstOMXVideoDec * self)
+       (guint) port_def.format.video.nFrameWidth,
+       (guint) port_def.format.video.nFrameHeight);
+ 
+-  state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
+-      format, port_def.format.video.nFrameWidth,
+-      port_def.format.video.nFrameHeight, self->input_state);
++  if (!self->convert_to_i420) {
++    state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
++        format, port_def.format.video.nFrameWidth,
++        port_def.format.video.nFrameHeight, self->input_state);
++#ifdef HAVE_DROID
++  } else {
++    state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
++        format, self->crop_rect.nWidth, self->crop_rect.nHeight,
++        self->input_state);
++#endif
++    }
+ 
+   if (!gst_video_decoder_negotiate (GST_VIDEO_DECODER (self))) {
+     gst_video_codec_state_unref (state);
+@@ -1274,9 +1351,15 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+       g_assert (port_def.format.video.eCompressionFormat ==
+           OMX_VIDEO_CodingUnused);
+ 
+-      format =
+-          gst_omx_video_get_format_from_omx (port_def.format.video.
+-          eColorFormat);
++      if (!self->convert_to_i420) {
++        format =
++            gst_omx_video_get_format_from_omx (port_def.format.
++            video.eColorFormat);
++#ifdef HAVE_DROID
++      } else {
++        format = GST_VIDEO_FORMAT_I420;
++#endif
++      }
+ 
+       if (format == GST_VIDEO_FORMAT_UNKNOWN) {
+         GST_ERROR_OBJECT (self, "Unsupported color format: %d",
+@@ -1287,6 +1370,8 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+         goto caps_failed;
+       }
+ 
++      gst_omx_video_dec_get_crop_rect (self, &port_def);
++
+       GST_DEBUG_OBJECT (self,
+           "Setting output state: format %s (%d), width %u, height %u",
+           gst_video_format_to_string (format),
+@@ -1294,9 +1379,17 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+           (guint) port_def.format.video.nFrameWidth,
+           (guint) port_def.format.video.nFrameHeight);
+ 
+-      state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
+-          format, port_def.format.video.nFrameWidth,
+-          port_def.format.video.nFrameHeight, self->input_state);
++      if (!self->convert_to_i420) {
++        state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
++            format, port_def.format.video.nFrameWidth,
++            port_def.format.video.nFrameHeight, self->input_state);
++#ifdef HAVE_DROID
++      } else {
++        state = gst_video_decoder_set_output_state (GST_VIDEO_DECODER (self),
++            format, self->crop_rect.nWidth, self->crop_rect.nHeight,
++            self->input_state);
++#endif
++      }
+ 
+       /* Take framerate and pixel-aspect-ratio from sinkpad caps */
+ 
+@@ -1364,7 +1457,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+     } else {
+       outbuf =
+           gst_video_decoder_allocate_output_buffer (GST_VIDEO_DECODER (self));
+-      if (!gst_omx_video_dec_fill_buffer (self, buf, outbuf)) {
++      if (!self->fill_buffer (self, buf, outbuf)) {
+         gst_buffer_unref (outbuf);
+         gst_omx_port_release_buffer (port, buf);
+         goto invalid_buffer;
+@@ -1387,7 +1480,7 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+          * We first need to reconfigure the output port and then the input
+          * port if both need reconfiguration.
+          */
+-        if (!gst_omx_video_dec_fill_buffer (self, buf, frame->output_buffer)) {
++        if (!self->fill_buffer (self, buf, frame->output_buffer)) {
+           gst_buffer_replace (&frame->output_buffer, NULL);
+           flow_ret =
+               gst_video_decoder_drop_frame (GST_VIDEO_DECODER (self), frame);
+@@ -1655,6 +1748,18 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
+       gst_omx_video_get_supported_colorformats (self->dec_out_port,
+       self->input_state);
+ 
++#ifdef HAVE_DROID
++  if ((self->dec->hacks & GST_OMX_HACK_I420_COLOR_CONVERSION)
++      && gst_omx_android_color_converter_open (&self->i420_color_converter)) {
++    GstOMXVideoNegotiationMap *m = g_slice_new (GstOMXVideoNegotiationMap);
++    m->format = GST_VIDEO_FORMAT_I420;
++    m->type = gst_omx_android_color_converter_decoder_format
++        (&self->i420_color_converter);
++    m->convert_to_i420 = TRUE;
++    negotiation_map = g_list_append (negotiation_map, m);
++  }
++#endif
++
+   comp_supported_caps = gst_omx_video_get_caps_for_map (negotiation_map);
+ 
+   if (!gst_caps_is_empty (comp_supported_caps)) {
+@@ -1698,6 +1803,14 @@ gst_omx_video_dec_negotiate (GstOMXVideoDec * self)
+ 
+     if (m->format == format) {
+       param.eColorFormat = m->type;
++      self->convert_to_i420 = m->convert_to_i420;
++      if (!m->convert_to_i420) {
++        self->fill_buffer = gst_omx_video_dec_fill_buffer;
++#ifdef HAVE_DROID
++      } else {
++        self->fill_buffer = gst_omx_video_dec_convert_to_i420;
++#endif
++      }
+       break;
+     }
+   }
+@@ -2546,8 +2659,10 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+         GST_BUFFER_POOL_OPTION_VIDEO_META);
+   }
+ 
+-  gst_buffer_pool_config_set_params (config, caps, port_def.nBufferSize,
+-      port_def.nBufferCountActual, port_def.nBufferCountActual);
++  if (!self->convert_to_i420) {
++    gst_buffer_pool_config_set_params (config, caps, port_def.nBufferSize,
++        port_def.nBufferCountActual, port_def.nBufferCountActual);
++  }
+ 
+ #ifdef HAVE_A_NATIVE_WINDOW_BUFFER
+   {
+diff --git a/omx/gstomxvideodec.h b/omx/gstomxvideodec.h
+index 3f7b489..63ca593 100644
+--- a/omx/gstomxvideodec.h
++++ b/omx/gstomxvideodec.h
+@@ -31,6 +31,10 @@
+ 
+ #include "gstomx.h"
+ 
++#ifdef HAVE_DROID
++#include "gstomxandroid.h"
++#endif
++
+ G_BEGIN_DECLS
+ 
+ #define GST_TYPE_OMX_VIDEO_DEC \
+@@ -78,6 +82,15 @@ struct _GstOMXVideoDec
+   GstOMXPort *egl_in_port, *egl_out_port;
+   gboolean eglimage;
+ #endif
++
++#ifdef HAVE_DROID
++  II420ColorConverter i420_color_converter;
++#endif
++
++  gboolean (*fill_buffer) (GstOMXVideoDec * self, GstOMXBuffer * inbuf,
++      GstBuffer * outbuf);
++  OMX_CONFIG_RECTTYPE crop_rect;
++  gboolean convert_to_i420;
+ };
+ 
+ struct _GstOMXVideoDecClass
+-- 
+1.8.3-rc3
+
