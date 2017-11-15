@@ -193,7 +193,7 @@ index 9371e8b..4591cbb 100644
  	gstomxaudiosink.h \
  	gstomxanalogaudiosink.h \
 -	gstomxhdmiaudiosink.h 	
-+	gstomxhdmiaudiosink.h \	
++	gstomxhdmiaudiosink.h \
 +	hybris.h \
 +	HardwareAPI.h
  

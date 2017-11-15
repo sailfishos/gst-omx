@@ -18,7 +18,7 @@ diff --git a/configure.ac b/configure.ac
 index 9c21eb4..74d32a4 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -214,6 +214,33 @@ AC_CHECK_DECLS([OMX_VIDEO_CodingTheora],
+@@ -214,6 +214,34 @@ AC_CHECK_DECLS([OMX_VIDEO_CodingTheora],
    ], [[$VIDEO_HEADERS]])
  AM_CONDITIONAL(HAVE_THEORA, test "x$HAVE_THEORA" = "xyes")
  
@@ -38,6 +38,7 @@ index 9c21eb4..74d32a4 100644
 +AM_CONDITIONAL(HAVE_DROID, test "x$HAVE_DROID" = "xyes")
 +
 +PKG_CHECK_MODULES(NATIVE_BUFFERS, [
++  gstreamer-droid-1.0
 +  android-headers
 +], [
 +  AC_SUBST(NATIVE_BUFFERS_CFLAGS)
@@ -68,12 +69,13 @@ index 599916d..5fad5a0 100644
  libgstomx_la_SOURCES = \
  	gstomx.c \
  	gstomxvideo.c \
-@@ -34,7 +39,8 @@ libgstomx_la_SOURCES = \
+@@ -34,7 +39,9 @@ libgstomx_la_SOURCES = \
  	gstomxamrdec.c \
  	gstomxaudiosink.c \
  	gstomxanalogaudiosink.c \
 -	gstomxhdmiaudiosink.c	
 +	gstomxhdmiaudiosink.c \
++	/usr/share/droidmedia/hybris.c \
 +	$(DROID_C_FILES)
  
  noinst_HEADERS = \
@@ -87,15 +89,19 @@ index 599916d..5fad5a0 100644
  	gstomxh263dec.h \
  	gstomxwmvdec.h \
 @@ -63,6 +70,7 @@ noinst_HEADERS = \
- 	gstomxhdmiaudiosink.h \	
+ 	gstomxhdmiaudiosink.h \
  	hybris.h \
- 	HardwareAPI.h
+-	HardwareAPI.h
++	HardwareAPI.h \
 +	$(DROID_H_FILES)
  
  if !HAVE_EXTERNAL_OMX
  OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
-@@ -72,12 +80,19 @@ libgstomx_la_CFLAGS = \
+@@ -70,14 +70,22 @@
+ 
+ libgstomx_la_CFLAGS = \
  	-DGST_USE_UNSTABLE_API=1 \
++	-I/usr/include/droidmedia/ \
  	$(OMX_INCLUDEPATH) \
  	$(GST_GL_CFLAGS) \
 +	$(NATIVE_BUFFERS_CFLAGS) \
