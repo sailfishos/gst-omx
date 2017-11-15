@@ -17,8 +17,10 @@ Patch8:         0008-Correctly-align-encoder-input-planes.-Contri.patch
 Patch9:         0009-Enable-the-storeMetaDataInBuffer-encoder-opt.patch
 Patch10:        0010-Don-t-require-parsed-mpeg4.patch
 Patch11:        0011-Utilize-android-color-conversion-for-decoder.patch
+Patch12:        0012-Skip-OMX-header-version-if-not-defined.patch
 
 BuildRequires:  droidmedia-devel
+BuildRequires:  droid-hal-devel
 BuildRequires:  pkgconfig(libandroid-properties)
 BuildRequires:  pkgconfig(gstreamer-1.0)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0)
@@ -48,12 +50,13 @@ GStreamer OpenMAX IL wrappers
 %patch9 -p1
 %patch10 -p1
 %patch11 -p1
+%patch12 -p1
 
 %build
 sed -i -e 's/GTK_DOC_CHECK.*//' configure.ac
 export NOCONFIGURE=1
 %autogen
-%configure --disable-static --with-omx-target=hybris
+%configure --disable-static --with-omx-target=hybris --with-omx-header-path=/usr/lib/droid-devel/include/mm-core/omxcore
 
 make
 
