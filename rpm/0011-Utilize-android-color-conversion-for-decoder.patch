@@ -266,7 +266,7 @@ index 7220b35..9be5d53 100644
 +    return TRUE;
 +
 +  if (!library)
-+    library = android_dlopen ("/system/lib/libI420colorconvert.so", RTLD_LAZY);
++    library = android_dlopen ("libI420colorconvert.so", RTLD_LAZY);
 +
 +  if (library && !get_i420_color_converter) {
 +    get_i420_color_converter = library
@@ -346,7 +346,7 @@ diff --git a/omx/gstomxvideo.c b/omx/gstomxvideo.c
 index 4e1ea26..ef530dd 100644
 --- a/omx/gstomxvideo.c
 +++ b/omx/gstomxvideo.c
-@@ -135,6 +135,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
+@@ -137,6 +137,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
          m = g_slice_new (GstOMXVideoNegotiationMap);
          m->format = f;
          m->type = param.eColorFormat;

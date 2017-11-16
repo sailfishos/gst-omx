@@ -12,12 +12,13 @@ diff --git a/omx/gstomxvideo.c b/omx/gstomxvideo.c
 index 8a42c71..4e1ea26 100644
 --- a/omx/gstomxvideo.c
 +++ b/omx/gstomxvideo.c
-@@ -31,12 +31,16 @@
+@@ -31,12 +31,17 @@
  GST_DEBUG_CATEGORY (gst_omx_video_debug_category);
  #define GST_CAT_DEFAULT gst_omx_video_debug_category
  
 +enum {
-+  QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03
++  QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03,
++  QOMX_COLOR_FormatYUV420PackedSemiPlanar32m = 0x7FA30C04
 +};
 +
  GstVideoFormat
@@ -31,6 +32,14 @@ index 8a42c71..4e1ea26 100644
      case OMX_COLOR_FormatL8:
        format = GST_VIDEO_FORMAT_GRAY8;
        break;
+@@ -46,6 +46,7 @@
+       break;
+     case OMX_COLOR_FormatYUV420SemiPlanar:
+     case OMX_COLOR_FormatYUV420PackedSemiPlanar:
++    case QOMX_COLOR_FormatYUV420PackedSemiPlanar32m:
+       format = GST_VIDEO_FORMAT_NV12;
+       break;
+     case OMX_COLOR_FormatYUV422SemiPlanar:
 @@ -79,7 +83,10 @@ gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
      case OMX_COLOR_Format24bitBGR888:
        format = GST_VIDEO_FORMAT_BGR;
