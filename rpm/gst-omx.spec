@@ -63,6 +63,10 @@ make
 %install
 %make_install
 
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
 %files
 %defattr(-,root,root,-)
 %{_libdir}/gstreamer-1.0/libgstomx.so
