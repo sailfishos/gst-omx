@@ -4,6 +4,8 @@ Date: Thu, 29 May 2014 02:09:20 +0000
 Subject: [PATCH 03/11] [gst-omx] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
  map. Contributes to JB#19560
 
+abranson: Also added FormatYUV420PackedSemiPlanar32m
+
 ---
  omx/gstomxvideo.c | 14 +++++++++++---
  1 file changed, 11 insertions(+), 3 deletions(-)

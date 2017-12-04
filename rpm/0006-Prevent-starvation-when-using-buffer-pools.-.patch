@@ -149,14 +149,6 @@ index 4edc463..89eaeaf 100644
    if ((err = comp->last_error) != OMX_ErrorNone) {
      GST_ERROR_OBJECT (comp->parent, "Component %s is in error state: %s "
          "(0x%08x)", comp->name, gst_omx_error_to_string (err), err);
-@@ -1558,6 +1620,7 @@ gst_omx_port_release_buffer (GstOMXPort * port, GstOMXBuffer * buf)
-   } else {
-     err = OMX_FillThisBuffer (comp->handle, buf->omx_buf);
-   }
-+
-   GST_DEBUG_OBJECT (comp->parent, "Released buffer %p to %s port %u: %s "
-       "(0x%08x)", buf, comp->name, port->index, gst_omx_error_to_string (err),
-       err);
 @@ -1582,6 +1645,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
    comp = port->comp;
  

@@ -30,7 +30,7 @@ index 89eaeaf..a506217 100644
          g_queue_push_tail (&port->pending_buffers, buf);
  
          break;
-@@ -1835,6 +1840,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port, GstBufferPool *pool,
+@@ -1834,6 +1839,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port, GstBufferPool *pool,
      buf = g_slice_new0 (GstOMXBuffer);
      buf->port = port;
      buf->pool_buffer = NULL;
