@@ -1,0 +1,30 @@
+From 4a636286616a05236697fc19a9c5a94091641bc5 Mon Sep 17 00:00:00 2001
+From: psoboiowd <andrew.branson@jollamobile.com>
+Date: Mon, 11 Dec 2017 15:33:11 +0100
+Subject: [PATCH 14/14] [omx] Try to fall back to old Android native buffers
+ extension if the new one isn't implemented
+
+---
+ omx/gstomxandroid.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/omx/gstomxandroid.c b/omx/gstomxandroid.c
+index bb58e02..4a8d858 100644
+--- a/omx/gstomxandroid.c
++++ b/omx/gstomxandroid.c
+@@ -41,6 +41,12 @@ gst_omx_android_enable_native_buffers (GstOMXComponent * comp,
+   err = OMX_GetExtensionIndex (comp->handle,
+       (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers2",
+       &extension);
++  if (err != OMX_ErrorNone) {
++    err = OMX_GetExtensionIndex (comp->handle,
++        (OMX_STRING) "OMX.google.android.index.enableAndroidNativeBuffers",
++        &extension);
++  }
++  
+   if (err != OMX_ErrorNone)
+     return enable ? err : OMX_ErrorNone;
+ 
+-- 
+2.14.1
+

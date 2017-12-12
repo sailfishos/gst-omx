@@ -18,6 +18,8 @@ Patch9:         0009-Enable-the-storeMetaDataInBuffer-encoder-option.patch
 Patch10:        0010-Don-t-require-parsed-mpeg4.patch
 Patch11:        0011-Utilize-android-color-conversion-for-decoder-output.patch
 Patch12:        0012-Skip-OMX-header-version-if-not-defined.patch
+Patch13:        0013-omx-Fix-timeout-on-video-decoder-flush.patch
+Patch14:        0014-omx-Try-to-fall-back-to-old-Android-native-buffers.patch
 
 BuildRequires:  droidmedia-devel
 BuildRequires:  droid-hal-devel
@@ -51,6 +53,8 @@ GStreamer OpenMAX IL wrappers
 %patch10 -p1
 %patch11 -p1
 %patch12 -p1
+%patch13 -p1
+%patch14 -p1
 
 %build
 sed -i -e 's/GTK_DOC_CHECK.*//' configure.ac
