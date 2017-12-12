@@ -1,21 +1,21 @@
-From 85a9cc01c454805070cbcf9edc53b90cd98affbc Mon Sep 17 00:00:00 2001
+From 6fbe61cf4f4005344c59c2151da69b92b1cf9315 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 24 Jul 2014 23:52:10 +0000
-Subject: [PATCH 01/11] Enable hybris support (squashed)
+Subject: [PATCH 01/14] Enable hybris support (squashed)
 
 ---
- configure.ac      |  19 +++++++--
+ configure.ac      |  17 +++++++-
  omx/HardwareAPI.h | 116 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
  omx/Makefile.am   |   4 +-
  omx/gstomx.c      | 101 ++++++++++++++++++++++++++++++++++++++++++++++-
  omx/gstomx.h      |  14 +++++++
  omx/hybris.h      |  25 ++++++++++++
- 6 files changed, 274 insertions(+), 5 deletions(-)
+ 6 files changed, 273 insertions(+), 4 deletions(-)
  create mode 100644 omx/HardwareAPI.h
  create mode 100644 omx/hybris.h
 
 diff --git a/configure.ac b/configure.ac
-index b1ef5fa..9c21eb4 100644
+index b1ef5fa..7ef001f 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -162,6 +162,15 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_API_VERSION`"
@@ -185,7 +185,7 @@ index 0000000..ed9849c
 +
 +#endif  // HARDWARE_API_H_
 diff --git a/omx/Makefile.am b/omx/Makefile.am
-index 9371e8b..4591cbb 100644
+index 9371e8b..d2bc117 100644
 --- a/omx/Makefile.am
 +++ b/omx/Makefile.am
 @@ -62,7 +62,9 @@ noinst_HEADERS = \
@@ -200,7 +200,7 @@ index 9371e8b..4591cbb 100644
  if !HAVE_EXTERNAL_OMX
  OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index f9b41eb..883cc17 100644
+index f9b41eb..df9388b 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -46,6 +46,11 @@
@@ -403,5 +403,5 @@ index 0000000..3516155
 +
 +#endif
 -- 
-1.8.3-rc3
+2.14.1
 

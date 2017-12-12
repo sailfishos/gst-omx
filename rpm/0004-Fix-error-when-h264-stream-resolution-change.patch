@@ -1,8 +1,8 @@
-From 7b2fe603df6d6224cf30267327d3fe60f39dea51 Mon Sep 17 00:00:00 2001
+From 718dafaca11a8d2c7c54b1f7a9d9c7baf17b6e52 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 24 Apr 2014 16:55:13 +1000
-Subject: [PATCH 04/11] [gst-omx] Fix error when h264 stream resolution
- changes. Contributes to JB#17654
+Subject: [PATCH 04/14] Fix error when h264 stream resolution changes.
+ Contributes to JB#17654
 
 The decoder is able to determine new configuration from the bytestream
 so allow it to decide when to reconfigure the output port instead
@@ -15,7 +15,7 @@ error.
  3 files changed, 15 insertions(+), 7 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 883cc17..08c1d50 100644
+index df9388b..a6a054f 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -2575,6 +2575,8 @@ gst_omx_parse_hacks (gchar ** hacks)
@@ -70,5 +70,5 @@ index 79b4daa..a7646e3 100644
      is_format_change |=
          klass->is_format_change (self, self->dec_in_port, state);
 -- 
-1.8.3-rc3
+2.14.1
 

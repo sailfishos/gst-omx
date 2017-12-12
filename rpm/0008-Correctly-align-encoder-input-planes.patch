@@ -1,8 +1,8 @@
-From 4b0d033b9c7c6f75728934668dfc4be60fc65ddc Mon Sep 17 00:00:00 2001
+From 736b853ee581f08aca1ef571098294743a0fe6a5 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Fri, 30 May 2014 15:25:42 +1000
-Subject: [PATCH 08/11] [gst-omx] Correctly align encoder input planes.
- Contributes to JB#19560
+Subject: [PATCH 08/14] Correctly align encoder input planes. Contributes to
+ JB#19560
 
 Align the planes the buffer alignment, or 4096 bytes if not specified.
 ---
@@ -98,5 +98,5 @@ index 3b4e5c0..8f6184f 100644
          src = GST_VIDEO_FRAME_COMP_DATA (&frame, i);
          height = GST_VIDEO_FRAME_COMP_HEIGHT (&frame, i);
 -- 
-1.8.3-rc3
+2.14.1
 

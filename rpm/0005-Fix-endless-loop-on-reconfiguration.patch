@@ -1,8 +1,8 @@
-From 7ec68cb0533ad8d5dd9bee826761170d790b37fe Mon Sep 17 00:00:00 2001
+From 578ab7929ef1931a57b1545ae0516390c1948f8f Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Tue, 29 Jul 2014 16:41:45 +1000
-Subject: [PATCH 05/11] [gst-omx] Fix endless loop on reconfiguration.
- Contributes to JB#17654
+Subject: [PATCH 05/14] Fix endless loop on reconfiguration. Contributes to
+ JB#17654
 
 Reconfiguration of the output port waits for the pending_buffers queue
 to be emptied but in a flushing, disabled, or configuration state the
@@ -20,7 +20,7 @@ of the output port.
  6 files changed, 66 insertions(+), 20 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 08c1d50..4edc463 100644
+index a6a054f..a8d202f 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -469,6 +469,12 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -287,5 +287,5 @@ index fb5a1e0..3b4e5c0 100644
      GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
          gst_omx_component_get_last_error_string (self->enc),
 -- 
-1.8.3-rc3
+2.14.1
 

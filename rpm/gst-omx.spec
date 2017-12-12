@@ -8,15 +8,15 @@ URL:            http://gstreamer.net/
 Source0:        %{name}-%{version}.tar.gz
 Patch1:         0001-Enable-hybris-support.patch
 Patch2:         0002-Error-out-if-encoder-doesn-t-accept-our-color-format.patch
-Patch3:         0003-Add-GST_VIDEO_FORMAT_NV12_64Z32-to-the-video-format-.patch
+Patch3:         0003-Add-GST_VIDEO_FORMAT_NV12_64Z32-to-the-video-format.patch
 Patch4:         0004-Fix-error-when-h264-stream-resolution-change.patch
-Patch5:         0005-Fix-endless-loop-on-reconfiguration.-Contrib.patch
-Patch6:         0006-Prevent-starvation-when-using-buffer-pools.-.patch
-Patch7:         0007-Add-support-for-android-native-buffers.-Cont.patch
-Patch8:         0008-Correctly-align-encoder-input-planes.-Contri.patch
-Patch9:         0009-Enable-the-storeMetaDataInBuffer-encoder-opt.patch
+Patch5:         0005-Fix-endless-loop-on-reconfiguration.patch
+Patch6:         0006-Prevent-starvation-when-using-buffer-pools.patch
+Patch7:         0007-Add-support-for-android-native-buffers.patch
+Patch8:         0008-Correctly-align-encoder-input-planes.patch
+Patch9:         0009-Enable-the-storeMetaDataInBuffer-encoder-option.patch
 Patch10:        0010-Don-t-require-parsed-mpeg4.patch
-Patch11:        0011-Utilize-android-color-conversion-for-decoder.patch
+Patch11:        0011-Utilize-android-color-conversion-for-decoder-output.patch
 Patch12:        0012-Skip-OMX-header-version-if-not-defined.patch
 
 BuildRequires:  droidmedia-devel

@@ -1,7 +1,7 @@
-From 43255338c257d586890bee0527b33a6c673b1198 Mon Sep 17 00:00:00 2001
+From 96256e6d26cdeaabc16a5bfb0c3fab5ab54fa71b Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Fri, 11 Jul 2014 17:18:35 +1000
-Subject: [PATCH 10/11] Don't require parsed mpeg4.
+Subject: [PATCH 10/14] Don't require parsed mpeg4.
 
 ---
  omx/gstomxmpeg4videodec.c | 2 +-
@@ -21,5 +21,5 @@ index d912d74..abef018 100644
    gst_element_class_set_static_metadata (element_class,
        "OpenMAX MPEG4 Video Decoder",
 -- 
-1.8.3-rc3
+2.14.1
 
