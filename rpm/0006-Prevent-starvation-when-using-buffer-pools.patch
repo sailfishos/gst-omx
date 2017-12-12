@@ -1,8 +1,8 @@
-From cef0c818213240256d97191c24185cc25ee35286 Mon Sep 17 00:00:00 2001
+From 193551a059abfd24bd7f9f31e4c3c13174839465 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 29 May 2014 02:09:20 +0000
-Subject: [PATCH 06/11] [gst-omx] Prevent starvation when using buffer pools.
- Contributes to JB#19560
+Subject: [PATCH 06/14] Prevent starvation when using buffer pools. Contributes
+ to JB#19560
 
 Use a separate task to pull buffers from a buffer pool and feed them to
 the component rather than relying on a one out one in exchange when a
@@ -11,18 +11,18 @@ with an OMX buffer header rather than an a buffer pool reimplementation,
 and improves support for different memory types beyond EGL images.
 ---
  omx/Makefile.am        |   2 -
- omx/gstomx.c           | 282 ++++++++++++++++++----
+ omx/gstomx.c           | 279 ++++++++++++++++++----
  omx/gstomx.h           |  14 +-
  omx/gstomxbufferpool.c | 633 -------------------------------------------------
  omx/gstomxbufferpool.h |  94 --------
  omx/gstomxvideodec.c   | 395 ++++++++++--------------------
  omx/gstomxvideodec.h   |   2 -
- 7 files changed, 363 insertions(+), 1059 deletions(-)
+ 7 files changed, 361 insertions(+), 1058 deletions(-)
  delete mode 100644 omx/gstomxbufferpool.c
  delete mode 100644 omx/gstomxbufferpool.h
 
 diff --git a/omx/Makefile.am b/omx/Makefile.am
-index 4591cbb..599916d 100644
+index d2bc117..03dd872 100644
 --- a/omx/Makefile.am
 +++ b/omx/Makefile.am
 @@ -12,7 +12,6 @@ endif
@@ -42,7 +42,7 @@ index 4591cbb..599916d 100644
  	gstomxvideodec.h \
  	gstomxvideoenc.h \
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 4edc463..89eaeaf 100644
+index a8d202f..480d90d 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -54,6 +54,50 @@
@@ -149,7 +149,7 @@ index 4edc463..89eaeaf 100644
    if ((err = comp->last_error) != OMX_ErrorNone) {
      GST_ERROR_OBJECT (comp->parent, "Component %s is in error state: %s "
          "(0x%08x)", comp->name, gst_omx_error_to_string (err), err);
-@@ -1582,6 +1645,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
+@@ -1582,6 +1644,7 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
    comp = port->comp;
  
    g_mutex_lock (&comp->lock);
@@ -157,13 +157,11 @@ index 4edc463..89eaeaf 100644
  
    GST_DEBUG_OBJECT (comp->parent, "Setting %s port %d to %sflushing",
        comp->name, port->index, (flush ? "" : "not "));
-@@ -1605,8 +1669,17 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
-     gboolean signalled;
+@@ -1606,7 +1669,16 @@ gst_omx_port_set_flushing (GstOMXPort * port, GstClockTime timeout,
      OMX_ERRORTYPE last_error;
  
--    if (port->port_def.eDir == OMX_DirOutput) {
+     if (port->port_def.eDir == OMX_DirOutput) {
 -      g_queue_clear (&port->pending_buffers);
-+    if (port->port_def.eDir == OMX_DirOutput) {     
 +      if (port->pool && comp->fill_task) {
 +        gst_task_pause (comp->fill_task);
 +      }
@@ -177,7 +175,7 @@ index 4edc463..89eaeaf 100644
      }
  
      gst_omx_component_send_message (comp, NULL);
-@@ -1684,6 +1757,7 @@ done:
+@@ -1684,6 +1756,7 @@ done:
        comp->name, port->index, (flush ? "" : "not "),
        gst_omx_error_to_string (err), err);
    gst_omx_component_handle_messages (comp);
@@ -185,7 +183,7 @@ index 4edc463..89eaeaf 100644
    g_mutex_unlock (&comp->lock);
  
    return err;
-@@ -1716,13 +1790,13 @@ static OMX_ERRORTYPE gst_omx_port_deallocate_buffers_unlocked (GstOMXPort *
+@@ -1716,13 +1789,13 @@ static OMX_ERRORTYPE gst_omx_port_deallocate_buffers_unlocked (GstOMXPort *
  
  /* NOTE: Must be called while holding comp->lock, uses comp->messages_lock */
  static OMX_ERRORTYPE
@@ -203,7 +201,7 @@ index 4edc463..89eaeaf 100644
  
    g_assert (!port->buffers || port->buffers->len == 0);
    g_assert (port->num_used_buffers == 0);
-@@ -1731,6 +1805,8 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+@@ -1731,6 +1804,8 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
  
    comp = port->comp;
  
@@ -212,7 +210,7 @@ index 4edc463..89eaeaf 100644
    gst_omx_component_handle_messages (port->comp);
    if ((err = comp->last_error) != OMX_ErrorNone) {
      GST_ERROR_OBJECT (comp->parent, "Component %s in error state: %s (0x%08x)",
-@@ -1744,14 +1820,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+@@ -1744,14 +1819,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
     */
    gst_omx_port_update_port_definition (port, NULL);
  
@@ -228,7 +226,7 @@ index 4edc463..89eaeaf 100644
  
    GST_INFO_OBJECT (comp->parent,
        "Allocating %d buffers of size %" G_GSIZE_FORMAT " for %s port %u", n,
-@@ -1760,31 +1829,52 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+@@ -1760,31 +1828,52 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
    if (!port->buffers)
      port->buffers = g_ptr_array_sized_new (n);
  
@@ -293,7 +291,7 @@ index 4edc463..89eaeaf 100644
      }
  
      if (err != OMX_ErrorNone) {
-@@ -1792,6 +1882,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+@@ -1792,6 +1881,7 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
            "Failed to allocate buffer for %s port %u: %s (0x%08x)", comp->name,
            port->index, gst_omx_error_to_string (err), err);
        gst_omx_port_deallocate_buffers_unlocked (port);
@@ -301,7 +299,7 @@ index 4edc463..89eaeaf 100644
        goto done;
      }
  
-@@ -1804,13 +1895,20 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
+@@ -1804,13 +1894,20 @@ gst_omx_port_allocate_buffers_unlocked (GstOMXPort * port,
        /* In the beginning all buffers are not owned by the component */
        g_queue_push_tail (&port->pending_buffers, buf);
      }
@@ -324,7 +322,7 @@ index 4edc463..89eaeaf 100644
    gst_omx_port_update_port_definition (port, NULL);
  
    GST_INFO_OBJECT (comp->parent, "Allocated buffers for %s port %u: %s "
-@@ -1819,33 +1917,18 @@ done:
+@@ -1819,33 +1916,18 @@ done:
    return err;
  }
  
@@ -361,7 +359,7 @@ index 4edc463..89eaeaf 100644
    g_mutex_unlock (&port->comp->lock);
  
    return err;
-@@ -1853,16 +1936,14 @@ gst_omx_port_use_buffers (GstOMXPort * port, const GList * buffers)
+@@ -1853,16 +1935,14 @@ gst_omx_port_use_buffers (GstOMXPort * port, const GList * buffers)
  
  /* NOTE: Uses comp->lock and comp->messages_lock */
  OMX_ERRORTYPE
@@ -380,7 +378,7 @@ index 4edc463..89eaeaf 100644
    g_mutex_unlock (&port->comp->lock);
  
    return err;
-@@ -1897,6 +1978,13 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
+@@ -1897,6 +1977,13 @@ gst_omx_port_deallocate_buffers_unlocked (GstOMXPort * port)
      /* We still try to deallocate all buffers */
    }
  
@@ -394,7 +392,7 @@ index 4edc463..89eaeaf 100644
    /* We only allow deallocation of buffers after they
     * were all released from the port, either by flushing
     * the port or by disabling it.
-@@ -2007,12 +2095,30 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
+@@ -2007,12 +2094,30 @@ gst_omx_port_set_enabled_unlocked (GstOMXPort * port, gboolean enabled)
          OMX_SendCommand (comp->handle, OMX_CommandPortEnable, port->index,
          NULL);
    } else {
@@ -426,7 +424,7 @@ index 4edc463..89eaeaf 100644
      }
    }
  
-@@ -2137,6 +2243,70 @@ gst_omx_port_set_enabled (GstOMXPort * port, gboolean enabled)
+@@ -2137,6 +2242,70 @@ gst_omx_port_set_enabled (GstOMXPort * port, gboolean enabled)
    return err;
  }
  
@@ -497,7 +495,7 @@ index 4edc463..89eaeaf 100644
  static OMX_ERRORTYPE
  gst_omx_port_populate_unlocked (GstOMXPort * port)
  {
-@@ -2165,7 +2335,15 @@ gst_omx_port_populate_unlocked (GstOMXPort * port)
+@@ -2165,7 +2334,15 @@ gst_omx_port_populate_unlocked (GstOMXPort * port)
      goto done;
    }
  
@@ -1866,5 +1864,5 @@ index c79b66d..3f7b489 100644
    /* < private > */
    GstVideoCodecState *input_state;
 -- 
-1.8.3-rc3
+2.14.1
 

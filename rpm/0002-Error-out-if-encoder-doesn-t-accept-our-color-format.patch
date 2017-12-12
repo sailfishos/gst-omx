@@ -1,7 +1,7 @@
-From 03d926317b349006af36645e59ebb427c1f4849e Mon Sep 17 00:00:00 2001
+From 4d6930776104a7f23e941498333421870380df7e Mon Sep 17 00:00:00 2001
 From: Mohammed Hassan <mohammed.hassan@jollamobile.com>
 Date: Thu, 20 Jun 2013 16:21:55 +0300
-Subject: [PATCH 02/11] Error out if encoder doesn't accept our color format
+Subject: [PATCH 02/14] Error out if encoder doesn't accept our color format
 
 Not sure this test will ever work but at least it gets ignored on nexus4
 ---
@@ -28,5 +28,5 @@ index bfad2f3..fb5a1e0 100644
      if (!klass->set_format (self, self->enc_in_port, state)) {
        GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
 -- 
-1.8.3-rc3
+2.14.1
 

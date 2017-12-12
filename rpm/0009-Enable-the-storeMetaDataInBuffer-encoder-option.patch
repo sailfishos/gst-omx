@@ -1,8 +1,8 @@
-From 292da770bbe49cbfa40e190e89cb93235ca549e8 Mon Sep 17 00:00:00 2001
+From 38209aab2a184ba202bbd82605c9396de41ad7a9 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 12 Jun 2014 18:19:28 +1000
-Subject: [PATCH 09/11] [gst-omx] Enable the storeMetaDataInBuffer encoder
- option. Contributes to JB#20097
+Subject: [PATCH 09/14] Enable the storeMetaDataInBuffer encoder option.
+ Contributes to JB#20097
 
 Only if the stream source selects caps with the memory:AndroidMetadata feature.
 ---
@@ -15,7 +15,7 @@ Only if the stream source selects caps with the memory:AndroidMetadata feature.
  6 files changed, 111 insertions(+), 12 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 89eaeaf..a506217 100644
+index 480d90d..f689ba5 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -523,6 +523,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -285,5 +285,5 @@ index 176ea99..53e3b55 100644
    guint32 control_rate;
    guint32 target_bitrate;
 -- 
-1.8.3-rc3
+2.14.1
 

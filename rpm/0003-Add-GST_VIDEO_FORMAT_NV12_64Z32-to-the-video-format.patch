@@ -1,17 +1,16 @@
-From cad4c82f144892d92f9cc2bac9d5fa71a6f09d5b Mon Sep 17 00:00:00 2001
+From 86ed076493bc0d2628c6f35e849afa627169f617 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 29 May 2014 02:09:20 +0000
-Subject: [PATCH 03/11] [gst-omx] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
+Subject: [PATCH 03/14] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
  map. Contributes to JB#19560
 
 abranson: Also added FormatYUV420PackedSemiPlanar32m
-
 ---
- omx/gstomxvideo.c | 14 +++++++++++---
- 1 file changed, 11 insertions(+), 3 deletions(-)
+ omx/gstomxvideo.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/omx/gstomxvideo.c b/omx/gstomxvideo.c
-index 8a42c71..4e1ea26 100644
+index 8a42c71..954f264 100644
 --- a/omx/gstomxvideo.c
 +++ b/omx/gstomxvideo.c
 @@ -31,12 +31,17 @@
@@ -34,7 +33,7 @@ index 8a42c71..4e1ea26 100644
      case OMX_COLOR_FormatL8:
        format = GST_VIDEO_FORMAT_GRAY8;
        break;
-@@ -46,6 +46,7 @@
+@@ -46,6 +51,7 @@ gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
        break;
      case OMX_COLOR_FormatYUV420SemiPlanar:
      case OMX_COLOR_FormatYUV420PackedSemiPlanar:
@@ -42,19 +41,17 @@ index 8a42c71..4e1ea26 100644
        format = GST_VIDEO_FORMAT_NV12;
        break;
      case OMX_COLOR_FormatYUV422SemiPlanar:
-@@ -79,7 +83,10 @@ gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
+@@ -79,6 +85,9 @@ gst_omx_video_get_format_from_omx (OMX_COLOR_FORMATTYPE omx_colorformat)
      case OMX_COLOR_Format24bitBGR888:
        format = GST_VIDEO_FORMAT_BGR;
        break;
--    default:
 +    case QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka:
 +      format = GST_VIDEO_FORMAT_NV12_64Z32;
 +      break;
-+    default:     
+     default:
        format = GST_VIDEO_FORMAT_UNKNOWN;
        break;
-   }
-@@ -109,6 +116,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
+@@ -109,6 +118,7 @@ gst_omx_video_get_supported_colorformats (GstOMXPort * port,
  
    old_index = -1;
    do {
@@ -63,5 +60,5 @@ index 8a42c71..4e1ea26 100644
          gst_omx_component_get_parameter (comp,
          OMX_IndexParamVideoPortFormat, &param);
 -- 
-1.8.3-rc3
+2.14.1
 
