@@ -1,0 +1,77 @@
+From d5742195a683b45c74796c31cee8efe016881845 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jollamobile.com>
+Date: Fri, 15 Dec 2017 12:17:27 +0100
+Subject: [PATCH] [omx] Properly support OMX_EventPortSettingsChanged
+ parameters. Fixed JB#40522
+
+---
+ omx/gstomx.c | 16 +++++++++++++---
+ omx/gstomx.h |  1 +
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/omx/gstomx.c b/omx/gstomx.c
+index 3aa71d7..eaeede9 100644
+--- a/omx/gstomx.c
++++ b/omx/gstomx.c
+@@ -423,11 +423,18 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
+       case GST_OMX_MESSAGE_PORT_SETTINGS_CHANGED:{
+         gint i, n;
+         OMX_U32 index = msg->content.port_settings_changed.port;
++        OMX_U32 param = msg->content.port_settings_changed.param;
+         GList *outports = NULL, *l, *k;
+ 
+         GST_DEBUG_OBJECT (comp->parent, "%s settings changed (port %u)",
+             comp->name, (guint) index);
+ 
++        if (param && param != OMX_IndexParamPortDefinition) {
++            GST_WARNING_OBJECT (comp->parent, "%s unknown settings param: %u",
++                comp->name, (guint) param);
++            break;
++        }
++
+         /* FIXME: This probably can be done better */
+ 
+         /* Now update the ports' states */
+@@ -677,12 +684,14 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
+     case OMX_EventPortSettingsChanged:
+     {
+       GstOMXMessage *msg = g_slice_new (GstOMXMessage);
+-      OMX_U32 index;
++      OMX_U32 index, param;
+ 
+       if (!(comp->hacks &
+               GST_OMX_HACK_EVENT_PORT_SETTINGS_CHANGED_NDATA_PARAMETER_SWAP)) {
+         index = nData1;
++        param = nData2;
+       } else {
++        param = nData1;
+         index = nData2;
+       }
+ 
+@@ -695,8 +704,9 @@ EventHandler (OMX_HANDLETYPE hComponent, OMX_PTR pAppData, OMX_EVENTTYPE eEvent,
+ 
+       msg->type = GST_OMX_MESSAGE_PORT_SETTINGS_CHANGED;
+       msg->content.port_settings_changed.port = index;
+-      GST_DEBUG_OBJECT (comp->parent, "%s settings changed (port index: %u)",
+-          comp->name, (guint) msg->content.port_settings_changed.port);
++      msg->content.port_settings_changed.param = param;
++      GST_DEBUG_OBJECT (comp->parent, "%s settings changed (port index: %u, param: %u)",
++          comp->name, (guint) msg->content.port_settings_changed.port, nData2);
+ 
+       gst_omx_component_send_message (comp, msg);
+       break;
+diff --git a/omx/gstomx.h b/omx/gstomx.h
+index f4c6287..2526cd9 100644
+--- a/omx/gstomx.h
++++ b/omx/gstomx.h
+@@ -235,6 +235,7 @@ struct _GstOMXMessage {
+     } port_enable;
+     struct {
+       OMX_U32 port;
++      OMX_U32 param;
+     } port_settings_changed;
+     struct {
+       OMX_U32 port;
+-- 
+1.8.3-rc3
+
