@@ -23,3 +23,8 @@ Hacks added for Sailfish:
  * i420-color-conversion - uses the faster libI420colorconvert.so for video decoding on devices that have that blob present.
 
 Note the port indices and the hacks. component-name should point to your omx lib in /system. Components that use the I420 colour conversion should have the 'i420-color-conversion' hack added.
+
+Known issues:
+
+ * i420-color-conversion segfaults somewhere under hybris. It's not essential though, so just leave it out for now.
+ * Android native buffers aren't being used with the gst-droid EGL sink, as it's no longer compatible.
