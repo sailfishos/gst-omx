@@ -1,7 +1,7 @@
-From 718dafaca11a8d2c7c54b1f7a9d9c7baf17b6e52 Mon Sep 17 00:00:00 2001
+From 3354062597b8a0a91eeeccce04dd4c572ff8dff4 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 24 Apr 2014 16:55:13 +1000
-Subject: [PATCH 04/14] Fix error when h264 stream resolution changes.
+Subject: [PATCH 04/15] Fix error when h264 stream resolution changes.
  Contributes to JB#17654
 
 The decoder is able to determine new configuration from the bytestream
@@ -10,12 +10,12 @@ of prematurely forcing an update which causes the decoder to throw an
 error.
 ---
  omx/gstomx.c         |  2 ++
- omx/gstomx.h         |  4 ++++
+ omx/gstomx.h         |  6 ++++++
  omx/gstomxvideodec.c | 16 +++++++++-------
- 3 files changed, 15 insertions(+), 7 deletions(-)
+ 3 files changed, 17 insertions(+), 7 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index df9388b..a6a054f 100644
+index 463983c..14180c8 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -2575,6 +2575,8 @@ gst_omx_parse_hacks (gchar ** hacks)
@@ -28,10 +28,10 @@ index df9388b..a6a054f 100644
        hacks_flags |= GST_OMX_HACK_SYNCFRAME_FLAG_NOT_USED;
      else if (g_str_equal (*hacks, "no-component-reconfigure"))
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index b5ad412..b9659f6 100644
+index 6332db7..70859c2 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
-@@ -139,6 +139,10 @@ G_BEGIN_DECLS
+@@ -144,6 +144,12 @@ G_BEGIN_DECLS
   */
  #define GST_OMX_HACK_HYBRIS                                           G_GUINT64_CONSTANT (0x0000000000000200)
  
@@ -39,14 +39,16 @@ index b5ad412..b9659f6 100644
 + * update the output port settings without the input being reconfigured.
 + */
 +#define GST_OMX_HACK_IMPLICIT_FORMAT_CHANGE                           G_GUINT64_CONSTANT (0x0000000000000400)
- 
++
++>>>>>>> 718dafa Fix error when h264 stream resolution changes. Contributes to JB#17654
  typedef struct _GstOMXCore GstOMXCore;
  typedef struct _GstOMXPort GstOMXPort;
+ typedef enum _GstOMXPortDirection GstOMXPortDirection;
 diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
-index 79b4daa..a7646e3 100644
+index d12ee8f..7c3c3a4 100644
 --- a/omx/gstomxvideodec.c
 +++ b/omx/gstomxvideodec.c
-@@ -1841,13 +1841,15 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
+@@ -1838,13 +1838,15 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
    /* Check if the caps change is a real format change or if only irrelevant
     * parts of the caps have changed or nothing at all.
     */
@@ -70,5 +72,5 @@ index 79b4daa..a7646e3 100644
      is_format_change |=
          klass->is_format_change (self, self->dec_in_port, state);
 -- 
-2.14.1
+1.8.3-rc3
 

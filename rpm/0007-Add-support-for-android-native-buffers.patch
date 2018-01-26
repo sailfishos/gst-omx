@@ -1,7 +1,7 @@
-From cdb3ece69b5c5194f406a4e12e1f8e49e8cfd6aa Mon Sep 17 00:00:00 2001
+From b1e42f55cdb7ec18e964fef4bec39d15380beacc Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Wed, 16 Apr 2014 05:15:27 +0000
-Subject: [PATCH 07/14] Add support for android native buffers. Contributes to
+Subject: [PATCH 07/15] Add support for android native buffers. Contributes to
  JB#1956
 
 ---
@@ -15,7 +15,7 @@ Subject: [PATCH 07/14] Add support for android native buffers. Contributes to
  create mode 100644 omx/gstomxandroid.h
 
 diff --git a/configure.ac b/configure.ac
-index 7ef001f..3d27d63 100644
+index 2c9738a..e5aa2b8 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -214,6 +214,34 @@ AC_CHECK_DECLS([OMX_VIDEO_CodingTheora],
@@ -267,7 +267,7 @@ index 0000000..f373c5d
 +
 +#endif
 diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
-index 802ac18..3c0ca09 100644
+index 23160be..af8639b 100644
 --- a/omx/gstomxvideodec.c
 +++ b/omx/gstomxvideodec.c
 @@ -51,6 +51,11 @@
@@ -282,18 +282,18 @@ index 802ac18..3c0ca09 100644
  GST_DEBUG_CATEGORY_STATIC (gst_omx_video_dec_debug_category);
  #define GST_CAT_DEFAULT gst_omx_video_dec_debug_category
  
-@@ -126,6 +131,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
- #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
+@@ -127,6 +132,11 @@ gst_omx_video_dec_class_init (GstOMXVideoDecClass * klass)
        GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
        "RGBA") "; "
-+#endif
+ #endif
 +#if defined (HAVE_A_NATIVE_WINDOW_BUFFER)
 +      GST_VIDEO_CAPS_MAKE_WITH_FEATURES (
 +        GST_CAPS_FEATURE_MEMORY_DROID_MEDIA_BUFFER,
 +        "{YV12}") "; "
- #endif
++#endif
        "video/x-raw, "
        "width = " GST_VIDEO_SIZE_RANGE ", "
+       "height = " GST_VIDEO_SIZE_RANGE ", " "framerate = " GST_VIDEO_FPS_RANGE;
 @@ -565,6 +575,29 @@ gst_omx_video_dec_use_egl_image (GstOMXPort *port, GstBuffer *buffer,
  }
  #endif
@@ -324,16 +324,16 @@ index 802ac18..3c0ca09 100644
  static OMX_ERRORTYPE
  gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
  {
-@@ -576,6 +609,9 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
-   gboolean was_enabled = TRUE;
+@@ -577,6 +610,9 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
  #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
    gboolean eglimage = FALSE
-+#endif
+ #endif
 +#ifdef HAVE_A_NATIVE_WINDOW_BUFFER
 +  gboolean android_native_buffers = FALSE;
- #endif
++#endif
    GstCaps *caps = NULL;
    guint min = 0, max = 0;
+   GstOMXPortUseBuffer use_buffer = NULL;
 @@ -626,6 +662,12 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
      eglimage = self->eglimage
          && (allocator && GST_IS_GL_MEMORY_EGL_ALLOCATOR (allocator));
@@ -347,7 +347,7 @@ index 802ac18..3c0ca09 100644
      caps = caps ? gst_caps_ref (caps) : NULL;
  
      GST_DEBUG_OBJECT (self, "Trying to use pool %p with caps %" GST_PTR_FORMAT
-@@ -687,6 +729,23 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+@@ -703,6 +745,23 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
    }
  #endif
  
@@ -371,7 +371,7 @@ index 802ac18..3c0ca09 100644
    if (min != port->port_def.nBufferCountActual) {
      err = gst_omx_port_update_port_definition (port, NULL);
      if (err == OMX_ErrorNone) {
-@@ -1885,8 +1944,12 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
+@@ -1901,8 +1960,12 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
        /* Need to allocate buffers to reach Idle state */
        if (gst_omx_port_allocate_buffers (self->dec_in_port) != OMX_ErrorNone)
          return FALSE;
@@ -385,7 +385,7 @@ index 802ac18..3c0ca09 100644
      }
  
      if (gst_omx_component_get_state (self->dec,
-@@ -2431,9 +2494,47 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+@@ -2447,9 +2510,47 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
    }
  #endif
  
@@ -434,7 +434,7 @@ index 802ac18..3c0ca09 100644
  
    g_assert (gst_query_get_n_allocation_pools (query) > 0);
    gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, &min, &max);
-@@ -2448,6 +2549,17 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+@@ -2464,6 +2565,17 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
    gst_buffer_pool_config_set_params (config, caps, port_def.nBufferSize,
        port_def.nBufferCountActual, port_def.nBufferCountActual);
  
@@ -453,5 +453,5 @@ index 802ac18..3c0ca09 100644
    gst_object_unref (pool);
  
 -- 
-2.14.1
+1.8.3-rc3
 

@@ -1,7 +1,7 @@
-From 86ed076493bc0d2628c6f35e849afa627169f617 Mon Sep 17 00:00:00 2001
+From 13fd9ccbac8e0228c1b0b0cfd2362a11a0a3aaa8 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 29 May 2014 02:09:20 +0000
-Subject: [PATCH 03/14] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
+Subject: [PATCH 03/15] Add GST_VIDEO_FORMAT_NV12_64Z32 to the video format
  map. Contributes to JB#19560
 
 abranson: Also added FormatYUV420PackedSemiPlanar32m
@@ -60,5 +60,5 @@ index 8a42c71..954f264 100644
          gst_omx_component_get_parameter (comp,
          OMX_IndexParamVideoPortFormat, &param);
 -- 
-2.14.1
+1.8.3-rc3
 

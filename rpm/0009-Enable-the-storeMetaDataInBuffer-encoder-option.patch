@@ -1,21 +1,21 @@
-From 38209aab2a184ba202bbd82605c9396de41ad7a9 Mon Sep 17 00:00:00 2001
+From bc80568e6e15f8fd3993108a1215dbbe9c1d5539 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 12 Jun 2014 18:19:28 +1000
-Subject: [PATCH 09/14] Enable the storeMetaDataInBuffer encoder option.
+Subject: [PATCH 09/15] Enable the storeMetaDataInBuffer encoder option.
  Contributes to JB#20097
 
 Only if the stream source selects caps with the memory:AndroidMetadata feature.
 ---
- omx/gstomx.c         |  6 +++++
+ omx/gstomx.c         |  6 ++++++
  omx/gstomx.h         |  1 +
- omx/gstomxandroid.c  | 36 +++++++++++++++++++++++--
+ omx/gstomxandroid.c  | 36 +++++++++++++++++++++++++++++++++--
  omx/gstomxandroid.h  |  3 +++
- omx/gstomxvideoenc.c | 74 +++++++++++++++++++++++++++++++++++++++++++++-------
+ omx/gstomxvideoenc.c | 54 ++++++++++++++++++++++++++++++++++++++++++++++++----
  omx/gstomxvideoenc.h |  3 +++
- 6 files changed, 111 insertions(+), 12 deletions(-)
+ 6 files changed, 97 insertions(+), 6 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 480d90d..f689ba5 100644
+index 8cec2e6..059dcdf 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -523,6 +523,11 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -39,10 +39,10 @@ index 480d90d..f689ba5 100644
      buf->settings_cookie = port->settings_cookie;
      g_ptr_array_add (port->buffers, buf);
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index 8306808..b6e6af5 100644
+index f9addd6..c7bb213 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
-@@ -303,6 +303,7 @@ struct _GstOMXBuffer {
+@@ -309,6 +309,7 @@ struct _GstOMXBuffer {
    GstOMXPort *port;
    OMX_BUFFERHEADERTYPE *omx_buf;
    GstBuffer *pool_buffer;
@@ -123,7 +123,7 @@ index f373c5d..e66b22d 100644
  
  #endif
 diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
-index 8f6184f..c75e082 100644
+index 0f6eb4e..308e43d 100644
 --- a/omx/gstomxvideoenc.c
 +++ b/omx/gstomxvideoenc.c
 @@ -34,6 +34,10 @@
@@ -164,7 +164,7 @@ index 8f6184f..c75e082 100644
  
    self = GST_OMX_VIDEO_ENC (encoder);
    klass = GST_OMX_VIDEO_ENC_GET_CLASS (encoder);
-@@ -1162,6 +1170,29 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+@@ -1174,6 +1182,29 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
            gst_omx_error_to_string (err), err);
    }
  
@@ -194,7 +194,7 @@ index 8f6184f..c75e082 100644
    GST_DEBUG_OBJECT (self, "Enabling component");
    if (needs_disable) {
      if (gst_omx_port_set_enabled (self->enc_in_port, TRUE) != OMX_ErrorNone)
-@@ -1485,7 +1516,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
+@@ -1514,7 +1545,7 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
    GstOMXAcquireBufferReturn acq_ret = GST_OMX_ACQUIRE_BUFFER_ERROR;
    GstOMXVideoEnc *self;
    GstOMXPort *port;
@@ -203,7 +203,7 @@ index 8f6184f..c75e082 100644
    OMX_ERRORTYPE err;
  
    self = GST_OMX_VIDEO_ENC (encoder);
-@@ -1614,6 +1645,13 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
+@@ -1643,6 +1674,13 @@ gst_omx_video_enc_handle_frame (GstVideoEncoder * encoder,
              gst_omx_error_to_string (err), err);
      }
  
@@ -217,7 +217,7 @@ index 8f6184f..c75e082 100644
      /* Copy the buffer content in chunks of size as requested
       * by the port */
      if (!gst_omx_video_enc_fill_buffer (self, frame->input_buffer, buf)) {
-@@ -1696,6 +1734,10 @@ buffer_fill_error:
+@@ -1725,6 +1763,10 @@ buffer_fill_error:
    }
  release_error:
    {
@@ -228,47 +228,26 @@ index 8f6184f..c75e082 100644
      gst_video_codec_frame_unref (frame);
      GST_ELEMENT_ERROR (self, LIBRARY, SETTINGS, (NULL),
          ("Failed to relase input buffer to component: %s (0x%08x)",
-@@ -1795,7 +1837,7 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
+@@ -1852,8 +1894,7 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
  {
    GstOMXVideoEnc *self = GST_OMX_VIDEO_ENC (encoder);
    GList *negotiation_map = NULL;
 -  GstCaps *comp_supported_caps;
+-  GstCaps *ret;
 +  GstCaps *comp_supported_caps, *ret;
  
    if (!self->enc)
      return gst_video_encoder_proxy_getcaps (encoder, NULL, filter);
-@@ -1808,13 +1850,25 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
-       (GDestroyNotify) gst_omx_video_negotiation_map_free);
+@@ -1878,5 +1919,10 @@ gst_omx_video_enc_getcaps (GstVideoEncoder * encoder, GstCaps * filter)
  
-   if (!gst_caps_is_empty (comp_supported_caps)) {
--    GstCaps *ret =
--        gst_video_encoder_proxy_getcaps (encoder, comp_supported_caps, filter);
--
--    gst_caps_unref (comp_supported_caps);
--    return ret;
-+    ret = gst_video_encoder_proxy_getcaps (encoder,
-+        comp_supported_caps, NULL);
-   } else {
--    gst_caps_unref (comp_supported_caps);
--    return gst_video_encoder_proxy_getcaps (encoder, NULL, filter);
-+    ret = gst_video_encoder_proxy_getcaps (encoder, NULL, NULL);
-+  }
-+
+   GST_LOG_OBJECT (encoder, "Supported caps %" GST_PTR_FORMAT, ret);
+ 
 +#ifdef HAVE_DROID
 +  ret = gst_omx_android_append_metadata_feature (self->enc, ret);
 +#endif
 +
-+  if (filter) {
-+    gst_caps_replace (&ret, gst_caps_intersect (ret, filter));
-   }
 +
-+  gst_caps_unref (comp_supported_caps);
-+
-+  GST_DEBUG_OBJECT (self, "encoder proxy caps %"GST_PTR_FORMAT, ret);
-+
-+  GST_DEBUG_OBJECT (self, "encoder supported caps %"GST_PTR_FORMAT, ret);
-+
-+  return ret;
+   return ret;
  }
 diff --git a/omx/gstomxvideoenc.h b/omx/gstomxvideoenc.h
 index 176ea99..53e3b55 100644
@@ -285,5 +264,5 @@ index 176ea99..53e3b55 100644
    guint32 control_rate;
    guint32 target_bitrate;
 -- 
-2.14.1
+1.8.3-rc3
 

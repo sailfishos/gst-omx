@@ -1,21 +1,21 @@
-From 6fbe61cf4f4005344c59c2151da69b92b1cf9315 Mon Sep 17 00:00:00 2001
+From a9a6b6f91f8f36067dd7df3bb78b4ec4a851b386 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 24 Jul 2014 23:52:10 +0000
-Subject: [PATCH 01/14] Enable hybris support (squashed)
+Subject: [PATCH 01/15] Enable hybris support
 
 ---
  configure.ac      |  17 +++++++-
  omx/HardwareAPI.h | 116 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
  omx/Makefile.am   |   4 +-
  omx/gstomx.c      | 101 ++++++++++++++++++++++++++++++++++++++++++++++-
- omx/gstomx.h      |  14 +++++++
+ omx/gstomx.h      |  13 ++++++
  omx/hybris.h      |  25 ++++++++++++
- 6 files changed, 273 insertions(+), 4 deletions(-)
+ 6 files changed, 272 insertions(+), 4 deletions(-)
  create mode 100644 omx/HardwareAPI.h
  create mode 100644 omx/hybris.h
 
 diff --git a/configure.ac b/configure.ac
-index b1ef5fa..7ef001f 100644
+index c650ad8..2c9738a 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -162,6 +162,15 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_API_VERSION`"
@@ -200,7 +200,7 @@ index 9371e8b..d2bc117 100644
  if !HAVE_EXTERNAL_OMX
  OMX_INCLUDEPATH = -I$(abs_srcdir)/openmax
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index f9b41eb..df9388b 100644
+index 0237f3c..463983c 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -46,6 +46,11 @@
@@ -333,23 +333,22 @@ index f9b41eb..df9388b 100644
        hacks_flags |= GST_OMX_HACK_SYNCFRAME_FLAG_NOT_USED;
      else if (g_str_equal (*hacks, "no-component-reconfigure"))
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index 60a315b..b5ad412 100644
+index cafed89..6332db7 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
-@@ -134,6 +134,12 @@ G_BEGIN_DECLS
+@@ -139,6 +139,11 @@ G_BEGIN_DECLS
   */
- #define GST_OMX_HACK_NO_DISABLE_OUTPORT                               G_GUINT64_CONSTANT (0x0000000000000100)
+ #define GST_OMX_HACK_HEIGHT_MULTIPLE_16             G_GUINT64_CONSTANT (0x0000000000000200)
  
 +/* If the OpenMAX core should be loaded via libhybris or not
 + * This is used to load Android binaries
 + */
 +#define GST_OMX_HACK_HYBRIS                                           G_GUINT64_CONSTANT (0x0000000000000200)
 +
-+
  typedef struct _GstOMXCore GstOMXCore;
  typedef struct _GstOMXPort GstOMXPort;
  typedef enum _GstOMXPortDirection GstOMXPortDirection;
-@@ -159,6 +165,10 @@ struct _GstOMXCore {
+@@ -164,6 +169,10 @@ struct _GstOMXCore {
    /* Handle to the OpenMAX IL core shared library */
    GModule *module;
  
@@ -360,7 +359,7 @@ index 60a315b..b5ad412 100644
    /* Current number of users, transitions from/to 0
     * call init/deinit */
    GMutex lock;
-@@ -318,6 +328,10 @@ const gchar *     gst_omx_command_to_string (OMX_COMMANDTYPE cmd);
+@@ -323,6 +332,10 @@ const gchar *     gst_omx_command_to_string (OMX_COMMANDTYPE cmd);
  guint64           gst_omx_parse_hacks (gchar ** hacks);
  
  GstOMXCore *      gst_omx_core_acquire (const gchar * filename);
@@ -403,5 +402,5 @@ index 0000000..3516155
 +
 +#endif
 -- 
-2.14.1
+1.8.3-rc3
 

@@ -1,7 +1,7 @@
-From 4d6930776104a7f23e941498333421870380df7e Mon Sep 17 00:00:00 2001
+From 0be1c71fd568aaba98c8c1a27eabe5a6e664bd67 Mon Sep 17 00:00:00 2001
 From: Mohammed Hassan <mohammed.hassan@jollamobile.com>
 Date: Thu, 20 Jun 2013 16:21:55 +0300
-Subject: [PATCH 02/14] Error out if encoder doesn't accept our color format
+Subject: [PATCH 02/15] Error out if encoder doesn't accept our color format
 
 Not sure this test will ever work but at least it gets ignored on nexus4
 ---
@@ -9,10 +9,10 @@ Not sure this test will ever work but at least it gets ignored on nexus4
  1 file changed, 8 insertions(+)
 
 diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
-index bfad2f3..fb5a1e0 100644
+index 1d0d106..540af3a 100644
 --- a/omx/gstomxvideoenc.c
 +++ b/omx/gstomxvideoenc.c
-@@ -1127,6 +1127,14 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+@@ -1139,6 +1139,14 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
    }
  #endif // USE_OMX_TARGET_RPI
  
@@ -28,5 +28,5 @@ index bfad2f3..fb5a1e0 100644
      if (!klass->set_format (self, self->enc_in_port, state)) {
        GST_ERROR_OBJECT (self, "Subclass failed to set the new format");
 -- 
-2.14.1
+1.8.3-rc3
 

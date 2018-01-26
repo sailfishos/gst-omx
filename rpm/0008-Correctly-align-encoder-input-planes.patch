@@ -6,14 +6,14 @@ Subject: [PATCH 08/14] Correctly align encoder input planes. Contributes to
 
 Align the planes the buffer alignment, or 4096 bytes if not specified.
 ---
- omx/gstomxvideoenc.c | 36 ++++++++++++++++++++++++++++--------
- 1 file changed, 28 insertions(+), 8 deletions(-)
+ omx/gstomxvideoenc.c | 54 ++++++++++++++++++++++++++++++++++++++++------------
+ 1 file changed, 42 insertions(+), 12 deletions(-)
 
 diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
-index 3b4e5c0..8f6184f 100644
+index 69e630c..0f6eb4e 100644
 --- a/omx/gstomxvideoenc.c
 +++ b/omx/gstomxvideoenc.c
-@@ -1301,6 +1301,7 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
+@@ -1313,6 +1313,7 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
    OMX_PARAM_PORTDEFINITIONTYPE *port_def = &self->enc_in_port->port_def;
    gboolean ret = FALSE;
    GstVideoFrame frame;
@@ -21,16 +21,16 @@ index 3b4e5c0..8f6184f 100644
  
    if (info->width != port_def->format.video.nFrameWidth ||
        info->height != port_def->format.video.nFrameHeight) {
-@@ -1321,6 +1322,8 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
-   }
+@@ -1337,6 +1338,8 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
  
    /* Different strides */
+   GST_LOG_OBJECT (self, "Mismatched strides - copying line-by-line");
 +  buffer_alignment = port_def->nBufferAlignment
 +       ? port_def->nBufferAlignment : 4096;
  
    switch (info->finfo->format) {
      case GST_VIDEO_FORMAT_I420:{
-@@ -1337,6 +1340,8 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
+@@ -1353,6 +1356,8 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
        }
  
        for (i = 0; i < 3; i++) {
@@ -38,10 +38,10 @@ index 3b4e5c0..8f6184f 100644
 +
          if (i == 0) {
            dest_stride = port_def->format.video.nStride;
-           src_stride = GST_VIDEO_FRAME_COMP_STRIDE (&frame, 0);
-@@ -1353,15 +1358,23 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
-             dest_stride = src_stride;
-         }
+           dest_height = port_def->format.video.nSliceHeight;
+@@ -1366,15 +1371,23 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
+         if (dest_stride == 0)
+           dest_stride = src_stride;
  
 -        dest = outbuf->omx_buf->pBuffer + outbuf->omx_buf->nOffset;
 -        if (i > 0)
@@ -68,22 +68,34 @@ index 3b4e5c0..8f6184f 100644
  
          src = GST_VIDEO_FRAME_COMP_DATA (&frame, i);
          height = GST_VIDEO_FRAME_COMP_HEIGHT (&frame, i);
-@@ -1400,6 +1413,8 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
-       }
+@@ -1420,16 +1433,33 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
+       dest_stride = port_def->format.video.nStride;
  
        for (i = 0; i < 2; i++) {
+-        src_stride = GST_VIDEO_FRAME_COMP_STRIDE (&frame, i);
+-        /* XXX: Try this if no stride was set */
+-        if (dest_stride == 0)
+-          dest_stride = src_stride;
 +        OMX_U32 dest_offset;
-+
-         if (i == 0) {
-           dest_stride = port_def->format.video.nStride;
-           src_stride = GST_VIDEO_FRAME_COMP_STRIDE (&frame, 0);
-@@ -1415,11 +1430,16 @@ gst_omx_video_enc_fill_buffer (GstOMXVideoEnc * self, GstBuffer * inbuf,
-             dest_stride = src_stride;
-         }
  
 -        dest = outbuf->omx_buf->pBuffer + outbuf->omx_buf->nOffset;
 -        if (i == 1)
 -          dest +=
++        if (i == 0) {
++          dest_stride = port_def->format.video.nStride;
++          src_stride = GST_VIDEO_FRAME_COMP_STRIDE (&frame, 0);
++          /* XXX: Try this if no stride was set */
++          if (dest_stride == 0)
++            dest_stride = src_stride;
++        } else {
++          dest_stride = port_def->format.video.nStride;
++          src_stride = GST_VIDEO_FRAME_COMP_STRIDE (&frame, 1);
++
++          /* XXX: Try this if no stride was set */
++          if (dest_stride == 0)
++            dest_stride = src_stride;
++        }
++
 +        dest_offset = outbuf->omx_buf->nOffset;
 +        if (i == 1) {
 +          dest_offset +=
@@ -95,8 +107,8 @@ index 3b4e5c0..8f6184f 100644
 +
 +        dest = outbuf->omx_buf->pBuffer + dest_offset;
  
-         src = GST_VIDEO_FRAME_COMP_DATA (&frame, i);
-         height = GST_VIDEO_FRAME_COMP_HEIGHT (&frame, i);
+         if (i == 0)
+           dest_height = port_def->format.video.nSliceHeight;
 -- 
-2.14.1
+1.8.3-rc3
 

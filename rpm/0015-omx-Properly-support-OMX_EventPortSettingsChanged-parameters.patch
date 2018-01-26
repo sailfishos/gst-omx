@@ -1,7 +1,7 @@
-From d5742195a683b45c74796c31cee8efe016881845 Mon Sep 17 00:00:00 2001
+From 240695cf373e3c12a2eff83fd22c5e9c1a22a4c2 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jollamobile.com>
 Date: Fri, 15 Dec 2017 12:17:27 +0100
-Subject: [PATCH] [omx] Properly support OMX_EventPortSettingsChanged
+Subject: [PATCH 15/15] [omx] Properly support OMX_EventPortSettingsChanged
  parameters. Fixed JB#40522
 
 ---
@@ -10,7 +10,7 @@ Subject: [PATCH] [omx] Properly support OMX_EventPortSettingsChanged
  2 files changed, 14 insertions(+), 3 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index 3aa71d7..eaeede9 100644
+index e8a5bd0..71b72c5 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -423,11 +423,18 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -61,10 +61,10 @@ index 3aa71d7..eaeede9 100644
        gst_omx_component_send_message (comp, msg);
        break;
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index f4c6287..2526cd9 100644
+index 3941c9c..4f42687 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
-@@ -235,6 +235,7 @@ struct _GstOMXMessage {
+@@ -240,6 +240,7 @@ struct _GstOMXMessage {
      } port_enable;
      struct {
        OMX_U32 port;

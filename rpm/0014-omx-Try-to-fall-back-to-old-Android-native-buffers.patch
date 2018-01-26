@@ -1,7 +1,7 @@
-From 4a636286616a05236697fc19a9c5a94091641bc5 Mon Sep 17 00:00:00 2001
+From f870a088ebe78bb09a5c27fb86c535b53bed1a8c Mon Sep 17 00:00:00 2001
 From: psoboiowd <andrew.branson@jollamobile.com>
 Date: Mon, 11 Dec 2017 15:33:11 +0100
-Subject: [PATCH 14/14] [omx] Try to fall back to old Android native buffers
+Subject: [PATCH 14/15] [omx] Try to fall back to old Android native buffers
  extension if the new one isn't implemented
 
 ---
@@ -26,5 +26,5 @@ index bb58e02..4a8d858 100644
      return enable ? err : OMX_ErrorNone;
  
 -- 
-2.14.1
+1.8.3-rc3
 

@@ -1,7 +1,7 @@
-From 578ab7929ef1931a57b1545ae0516390c1948f8f Mon Sep 17 00:00:00 2001
+From aad9ef4ee9b6bff6a59631f8e3407b0fb52816cb Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Tue, 29 Jul 2014 16:41:45 +1000
-Subject: [PATCH 05/14] Fix endless loop on reconfiguration. Contributes to
+Subject: [PATCH 05/15] Fix endless loop on reconfiguration. Contributes to
  JB#17654
 
 Reconfiguration of the output port waits for the pending_buffers queue
@@ -20,7 +20,7 @@ of the output port.
  6 files changed, 66 insertions(+), 20 deletions(-)
 
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index a6a054f..a8d202f 100644
+index 14180c8..2d1ff63 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -469,6 +469,12 @@ gst_omx_component_handle_messages (GstOMXComponent * comp)
@@ -211,10 +211,10 @@ index a6a054f..a8d202f 100644
              "Failed to pass buffer %p (%p) to %s port %u: %s (0x%08x)", buf,
              buf->omx_buf->pBuffer, comp->name, port->index,
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index b9659f6..9d5882c 100644
+index 70859c2..2f7d3b9 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
-@@ -251,6 +251,8 @@ struct _GstOMXPort {
+@@ -257,6 +257,8 @@ struct _GstOMXPort {
    gboolean disabled_pending; /* was done until it took effect */
    gboolean eos; /* TRUE after a buffer with EOS flag was received */
  
@@ -240,7 +240,7 @@ index 8b8e121..f710251 100644
      GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
          gst_omx_component_get_last_error_string (self->dec),
 diff --git a/omx/gstomxaudioenc.c b/omx/gstomxaudioenc.c
-index e92c21e..d1708e5 100644
+index ed4d11b..a76e1af 100644
 --- a/omx/gstomxaudioenc.c
 +++ b/omx/gstomxaudioenc.c
 @@ -866,6 +866,10 @@ gst_omx_audio_enc_set_format (GstAudioEncoder * encoder, GstAudioInfo * info)
@@ -255,10 +255,10 @@ index e92c21e..d1708e5 100644
      GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
          gst_omx_component_get_last_error_string (self->enc),
 diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
-index a7646e3..e607ed8 100644
+index 7c3c3a4..99a5666 100644
 --- a/omx/gstomxvideodec.c
 +++ b/omx/gstomxvideodec.c
-@@ -2063,6 +2063,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
+@@ -2060,6 +2060,11 @@ gst_omx_video_dec_set_format (GstVideoDecoder * decoder,
    gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, FALSE);
    gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
  
@@ -271,10 +271,10 @@ index a7646e3..e607ed8 100644
      GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
          gst_omx_component_get_last_error_string (self->dec),
 diff --git a/omx/gstomxvideoenc.c b/omx/gstomxvideoenc.c
-index fb5a1e0..3b4e5c0 100644
+index 540af3a..69e630c 100644
 --- a/omx/gstomxvideoenc.c
 +++ b/omx/gstomxvideoenc.c
-@@ -1231,6 +1231,11 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
+@@ -1243,6 +1243,11 @@ gst_omx_video_enc_set_format (GstVideoEncoder * encoder,
    gst_omx_port_set_flushing (self->enc_in_port, 5 * GST_SECOND, FALSE);
    gst_omx_port_set_flushing (self->enc_out_port, 5 * GST_SECOND, FALSE);
  
@@ -287,5 +287,5 @@ index fb5a1e0..3b4e5c0 100644
      GST_ERROR_OBJECT (self, "Component in error state: %s (0x%08x)",
          gst_omx_component_get_last_error_string (self->enc),
 -- 
-2.14.1
+1.8.3-rc3
 

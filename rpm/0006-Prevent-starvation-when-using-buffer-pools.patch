@@ -1,7 +1,7 @@
-From 193551a059abfd24bd7f9f31e4c3c13174839465 Mon Sep 17 00:00:00 2001
+From f41cbc32e5bc9f1835aca4266e9725387b78ae48 Mon Sep 17 00:00:00 2001
 From: Andrew den Exter <andrew.den.exter@jollamobile.com>
 Date: Thu, 29 May 2014 02:09:20 +0000
-Subject: [PATCH 06/14] Prevent starvation when using buffer pools. Contributes
+Subject: [PATCH 06/15] Prevent starvation when using buffer pools. Contributes
  to JB#19560
 
 Use a separate task to pull buffers from a buffer pool and feed them to
@@ -15,9 +15,9 @@ and improves support for different memory types beyond EGL images.
  omx/gstomx.h           |  14 +-
  omx/gstomxbufferpool.c | 633 -------------------------------------------------
  omx/gstomxbufferpool.h |  94 --------
- omx/gstomxvideodec.c   | 395 ++++++++++--------------------
+ omx/gstomxvideodec.c   | 368 ++++++++++------------------
  omx/gstomxvideodec.h   |   2 -
- 7 files changed, 361 insertions(+), 1058 deletions(-)
+ 7 files changed, 357 insertions(+), 1035 deletions(-)
  delete mode 100644 omx/gstomxbufferpool.c
  delete mode 100644 omx/gstomxbufferpool.h
 
@@ -42,7 +42,7 @@ index d2bc117..03dd872 100644
  	gstomxvideodec.h \
  	gstomxvideoenc.h \
 diff --git a/omx/gstomx.c b/omx/gstomx.c
-index a8d202f..480d90d 100644
+index 2d1ff63..8cec2e6 100644
 --- a/omx/gstomx.c
 +++ b/omx/gstomx.c
 @@ -54,6 +54,50 @@
@@ -513,7 +513,7 @@ index a8d202f..480d90d 100644
  
      guint i, n = port->buffers->len;
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index 9d5882c..8306808 100644
+index 2f7d3b9..f9addd6 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
 @@ -53,6 +53,7 @@
@@ -524,7 +524,7 @@ index 9d5882c..8306808 100644
  #ifdef USE_OMX_TARGET_RPI
  #include <OMX_Broadcom.h>
  #endif
-@@ -238,6 +239,7 @@ struct _GstOMXMessage {
+@@ -244,6 +245,7 @@ struct _GstOMXMessage {
  
  struct _GstOMXPort {
    GstOMXComponent *comp;
@@ -532,7 +532,7 @@ index 9d5882c..8306808 100644
    guint32 index;
  
    gboolean tunneled;
-@@ -275,6 +277,9 @@ struct _GstOMXComponent {
+@@ -281,6 +283,9 @@ struct _GstOMXComponent {
    GPtrArray *ports; /* Contains GstOMXPort* */
    gint n_in_ports, n_out_ports;
  
@@ -542,7 +542,7 @@ index 9d5882c..8306808 100644
    /* Locking order: lock -> messages_lock
     *
     * Never hold lock while waiting for messages_cond
-@@ -297,6 +302,7 @@ struct _GstOMXComponent {
+@@ -303,6 +308,7 @@ struct _GstOMXComponent {
  struct _GstOMXBuffer {
    GstOMXPort *port;
    OMX_BUFFERHEADERTYPE *omx_buf;
@@ -550,7 +550,7 @@ index 9d5882c..8306808 100644
  
    /* TRUE if the buffer is used by the port, i.e.
     * between {Empty,Fill}ThisBuffer and the callback
-@@ -305,9 +311,6 @@ struct _GstOMXBuffer {
+@@ -311,9 +317,6 @@ struct _GstOMXBuffer {
  
    /* Cookie of the settings when this buffer was allocated */
    gint settings_cookie;
@@ -560,7 +560,7 @@ index 9d5882c..8306808 100644
  };
  
  struct _GstOMXClassData {
-@@ -372,9 +375,10 @@ OMX_ERRORTYPE     gst_omx_port_release_buffer (GstOMXPort *port, GstOMXBuffer *b
+@@ -378,9 +381,10 @@ OMX_ERRORTYPE     gst_omx_port_release_buffer (GstOMXPort *port, GstOMXBuffer *b
  OMX_ERRORTYPE     gst_omx_port_set_flushing (GstOMXPort *port, GstClockTime timeout, gboolean flush);
  gboolean          gst_omx_port_is_flushing (GstOMXPort *port);
  
@@ -1313,7 +1313,7 @@ index 76f9680..0000000
 -
 -#endif /* __GST_OMX_BUFFER_POOL_H__ */
 diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
-index e607ed8..802ac18 100644
+index 99a5666..23160be 100644
 --- a/omx/gstomxvideodec.c
 +++ b/omx/gstomxvideodec.c
 @@ -48,7 +48,6 @@
@@ -1388,7 +1388,7 @@ index e607ed8..802ac18 100644
  #endif
      caps = caps ? gst_caps_ref (caps) : NULL;
  
-@@ -624,145 +647,85 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+@@ -624,22 +647,14 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
    }
  #endif
  
@@ -1412,33 +1412,11 @@ index e607ed8..802ac18 100644
 +    if (gst_buffer_pool_acquire_buffer (pool, &buffer, &params)
 +        == GST_FLOW_OK) {
        GstMemory *mem;
--      GstGLMemoryEGL *gl_mem;
--
--      if (gst_buffer_pool_acquire_buffer (pool, &buffer, &params) != GST_FLOW_OK
--          || gst_buffer_n_memory (buffer) != 1
--          || !(mem = gst_buffer_peek_memory (buffer, 0))
--          || !GST_IS_GL_MEMORY_EGL_ALLOCATOR (mem->allocator)) {
--        GST_INFO_OBJECT (self, "Failed to allocated %d-th EGLImage", i);
--        g_list_free_full (buffers, (GDestroyNotify) gst_buffer_unref);
--        g_list_free (images);
--        buffers = NULL;
--        images = NULL;
--        /* TODO: For non-RPi targets we want to use the normal memory code below */
--        /* Retry without EGLImage */
--        err = OMX_ErrorUndefined;
--        goto done;
--      }
--      gl_mem = (GstGLMemoryEGL *) mem;
--      buffers = g_list_append (buffers, buffer);
--      /* FIXME: replace with the affine transformation meta */
--      gl_mem->image->orientation =
--          GST_VIDEO_GL_TEXTURE_ORIENTATION_X_NORMAL_Y_FLIP;
--      images = g_list_append (images, gst_gl_memory_egl_get_image (gl_mem));
--      if (egl_display == EGL_NO_DISPLAY)
-+      if (gst_buffer_n_memory (buffer) == 1
-+          && (mem = gst_buffer_peek_memory (buffer, 0))
-+          && g_strcmp0 (mem->allocator->mem_type,
-+              GST_EGL_IMAGE_MEMORY_TYPE) == 0) {
+       GstGLMemoryEGL *gl_mem;
+ 
+@@ -662,104 +677,71 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+       images = g_list_append (images, gst_gl_memory_egl_get_image (gl_mem));
+       if (egl_display == EGL_NO_DISPLAY)
          egl_display = gst_gl_memory_egl_get_display (gl_mem);
 +      }
 +      gst_buffer_unref (buffer);
@@ -1596,7 +1574,7 @@ index e607ed8..802ac18 100644
  
      if (min != port->port_def.nBufferCountActual) {
        err = gst_omx_port_update_port_definition (port, NULL);
-@@ -779,17 +742,6 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+@@ -776,17 +758,6 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
        }
      }
  
@@ -1614,7 +1592,7 @@ index e607ed8..802ac18 100644
      err = gst_omx_port_allocate_buffers (port);
      if (err != OMX_ErrorNone && min > port->port_def.nBufferCountMin) {
        GST_ERROR_OBJECT (self,
-@@ -823,68 +775,31 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
+@@ -820,68 +791,31 @@ gst_omx_video_dec_allocate_output_buffers (GstOMXVideoDec * self)
        }
  
        err = gst_omx_port_allocate_buffers (port);
@@ -1696,7 +1674,7 @@ index e607ed8..802ac18 100644
    if (caps)
      gst_caps_unref (caps);
    if (pool)
-@@ -900,15 +815,6 @@ gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec * self)
+@@ -897,15 +831,6 @@ gst_omx_video_dec_deallocate_output_buffers (GstOMXVideoDec * self)
  {
    OMX_ERRORTYPE err;
  
@@ -1712,7 +1690,7 @@ index e607ed8..802ac18 100644
  #if defined (USE_OMX_TARGET_RPI) && defined (HAVE_GST_GL)
    err =
        gst_omx_port_deallocate_buffers (self->eglimage ? self->
-@@ -1390,44 +1296,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+@@ -1387,44 +1312,12 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
          GST_TIME_ARGS (-deadline));
      flow_ret = gst_video_decoder_drop_frame (GST_VIDEO_DECODER (self), frame);
      frame = NULL;
@@ -1761,7 +1739,7 @@ index e607ed8..802ac18 100644
      } else {
        outbuf =
            gst_video_decoder_allocate_output_buffer (GST_VIDEO_DECODER (self));
-@@ -1439,40 +1313,9 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
+@@ -1436,40 +1329,9 @@ gst_omx_video_dec_loop (GstOMXVideoDec * self)
      }
  
      flow_ret = gst_pad_push (GST_VIDEO_DECODER_SRC_PAD (self), outbuf);
@@ -1805,7 +1783,7 @@ index e607ed8..802ac18 100644
        flow_ret =
            gst_video_decoder_finish_frame (GST_VIDEO_DECODER (self), frame);
        frame = NULL;
-@@ -2535,16 +2378,22 @@ gst_omx_video_dec_drain (GstVideoDecoder * decoder)
+@@ -2532,16 +2394,22 @@ gst_omx_video_dec_drain (GstVideoDecoder * decoder)
  static gboolean
  gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
  {
@@ -1830,7 +1808,7 @@ index e607ed8..802ac18 100644
      if (caps && gst_video_info_from_caps (&info, caps)
          && info.finfo->format == GST_VIDEO_FORMAT_RGBA) {
        gboolean found = FALSE;
-@@ -2587,7 +2436,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+@@ -2584,7 +2452,7 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
      return FALSE;
  
    g_assert (gst_query_get_n_allocation_pools (query) > 0);
@@ -1839,7 +1817,7 @@ index e607ed8..802ac18 100644
    g_assert (pool != NULL);
  
    config = gst_buffer_pool_get_config (pool);
-@@ -2595,6 +2444,10 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
+@@ -2592,6 +2460,10 @@ gst_omx_video_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
      gst_buffer_pool_config_add_option (config,
          GST_BUFFER_POOL_OPTION_VIDEO_META);
    }
@@ -1864,5 +1842,5 @@ index c79b66d..3f7b489 100644
    /* < private > */
    GstVideoCodecState *input_state;
 -- 
-2.14.1
+1.8.3-rc3
 

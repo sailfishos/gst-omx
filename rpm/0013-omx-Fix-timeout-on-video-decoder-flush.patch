@@ -1,7 +1,7 @@
-From 176e646a9ab725dad93840bcb93de9ef8150802a Mon Sep 17 00:00:00 2001
+From 6eccf49ae442c17d27560184d90fe8cf5957b9d9 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jollamobile.com>
 Date: Fri, 8 Dec 2017 10:17:23 +0100
-Subject: [PATCH 13/14] [omx] Fix timeout on video decoder flush. Fixes
+Subject: [PATCH 13/15] [omx] Fix timeout on video decoder flush. Fixes
  JB#40521
 
 Remove pausing, stopping and resuming from the video decoder flush operation. Our OMX components don't flush when paused, so this causes a timeout.
@@ -10,10 +10,10 @@ Remove pausing, stopping and resuming from the video decoder flush operation. Ou
  1 file changed, 1 insertion(+), 33 deletions(-)
 
 diff --git a/omx/gstomxvideodec.c b/omx/gstomxvideodec.c
-index 25bb7f4..ed08719 100644
+index 68c90e0..8c21896 100644
 --- a/omx/gstomxvideodec.c
 +++ b/omx/gstomxvideodec.c
-@@ -2110,20 +2110,6 @@ gst_omx_video_dec_flush (GstVideoDecoder * decoder)
+@@ -2126,20 +2126,6 @@ gst_omx_video_dec_flush (GstVideoDecoder * decoder)
    if (gst_omx_component_get_state (self->dec, 0) == OMX_StateLoaded)
      return TRUE;
  
@@ -34,7 +34,7 @@ index 25bb7f4..ed08719 100644
    /* 1) Flush the ports */
    GST_DEBUG_OBJECT (self, "flushing ports");
    gst_omx_port_set_flushing (self->dec_in_port, 5 * GST_SECOND, TRUE);
-@@ -2136,25 +2122,7 @@ gst_omx_video_dec_flush (GstVideoDecoder * decoder)
+@@ -2152,25 +2138,7 @@ gst_omx_video_dec_flush (GstVideoDecoder * decoder)
    }
  #endif
  
@@ -62,5 +62,5 @@ index 25bb7f4..ed08719 100644
    gst_omx_port_set_flushing (self->dec_out_port, 5 * GST_SECOND, FALSE);
  
 -- 
-2.14.1
+1.8.3-rc3
 

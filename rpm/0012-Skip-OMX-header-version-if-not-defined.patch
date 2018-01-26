@@ -1,14 +1,14 @@
-From aeb06c73125884ed2ff6201f4537f0de51c1c601 Mon Sep 17 00:00:00 2001
+From 66335b4d15625e8963cba6b3214da89da325014e Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jollamobile.com>
 Date: Wed, 15 Nov 2017 12:25:37 +0100
-Subject: [PATCH 12/14] Skip OMX header version if not defined
+Subject: [PATCH 12/15] Skip OMX header version if not defined
 
 ---
  omx/gstomx.h | 7 +++++++
  1 file changed, 7 insertions(+)
 
 diff --git a/omx/gstomx.h b/omx/gstomx.h
-index f593b09..f4c6287 100644
+index 7d3b892..3941c9c 100644
 --- a/omx/gstomx.h
 +++ b/omx/gstomx.h
 @@ -68,6 +68,7 @@
@@ -33,5 +33,5 @@ index f593b09..f4c6287 100644
  #ifdef OMX_SKIP64BIT
  #define GST_OMX_GET_TICKS(ticks) ((((guint64) (ticks).nHighPart) << 32) | ((ticks).nLowPart))
 -- 
-2.14.1
+1.8.3-rc3
 
