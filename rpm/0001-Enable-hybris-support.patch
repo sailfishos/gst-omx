@@ -4,7 +4,7 @@ Date: Thu, 24 Jul 2014 23:52:10 +0000
 Subject: [PATCH 01/14] Enable hybris support (squashed)
 
 ---
- configure.ac      |  17 +++++++-
+ configure.ac      |  18 +++++++-
  omx/HardwareAPI.h | 116 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
  omx/Makefile.am   |   4 +-
  omx/gstomx.c      | 101 ++++++++++++++++++++++++++++++++++++++++++++++-
@@ -15,10 +15,10 @@ Subject: [PATCH 01/14] Enable hybris support (squashed)
  create mode 100644 omx/hybris.h
 
 diff --git a/configure.ac b/configure.ac
-index b1ef5fa..7ef001f 100644
+index b1ef5fa..11c51b1 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -162,6 +162,15 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_API_VERSION`"
+@@ -162,6 +162,16 @@ GST_PREFIX="`$PKG_CONFIG --variable=prefix gstreamer-$GST_API_VERSION`"
  AC_SUBST(GLIB_PREFIX)
  AC_SUBST(GST_PREFIX)
  
@@ -26,6 +26,7 @@ index b1ef5fa..7ef001f 100644
 +  [
 +    AC_DEFINE(HAVE_HYBRIS, 1, [libhybris support is available])
 +    HAVE_HYBRIS=yes
++    LDFLAGS=-lhybris-common
 +  ], [
 +    HAVE_HYBRIS=no
 +  ]
@@ -34,7 +35,7 @@ index b1ef5fa..7ef001f 100644
  AC_ARG_WITH([omx-header-path],
              AS_HELP_STRING([--with-omx-header-path],[path of external OpenMAX IL header files]),
          [omx_header_path="$withval"], [omx_header_path="none"])
-@@ -221,7 +230,7 @@ AC_ARG_ENABLE(Bsymbolic,
+@@ -221,7 +231,7 @@ AC_ARG_ENABLE(Bsymbolic,
                 LDFLAGS="${SAVED_LDFLAGS}" LIBS="${SAVED_LIBS}"])
  
  AC_ARG_WITH([omx-target],
@@ -43,7 +44,7 @@ index b1ef5fa..7ef001f 100644
          [ac_cv_omx_target="$withval"], [ac_cv_omx_target="none"])
  
  ac_cv_omx_target_struct_packing="none"
-@@ -238,13 +247,17 @@ case "${ac_cv_omx_target}" in
+@@ -238,13 +248,17 @@ case "${ac_cv_omx_target}" in
    bellagio)
      AC_DEFINE(USE_OMX_TARGET_BELLAGIO, 1, [Use Bellagio OpenMAX IL target])
      ;;
