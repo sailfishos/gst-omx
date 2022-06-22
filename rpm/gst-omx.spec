@@ -2,9 +2,8 @@ Name:           gstreamer1.0-omx
 Summary:        GStreamer OpenMAX IL wrappers
 Version:        1.10.4
 Release:        1
-Group:          Applications/Multimedia
 License:        LGPL v2.1+
-URL:            http://gstreamer.net/
+URL:            https://github.com/sailfishos/gst-omx
 Source0:        %{name}-%{version}.tar.gz
 Patch1:         0001-Enable-hybris-support.patch
 Patch2:         0002-Error-out-if-encoder-doesn-t-accept-our-color-format.patch
