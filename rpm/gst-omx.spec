@@ -2,7 +2,6 @@ Name:           gstreamer1.0-omx
 Summary:        GStreamer OpenMAX IL wrappers
 Version:        1.10.4
 Release:        1
-Group:          Applications/Multimedia
 License:        LGPL v2.1+
 URL:            https://github.com/sailfishos/gst-omx
 Source0:        %{name}-%{version}.tar.gz
